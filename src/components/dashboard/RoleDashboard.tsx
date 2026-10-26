@@ -71,7 +71,7 @@ export const RoleDashboard = ({ userRole }: RoleDashboardProps) => {
           { icon: Activity, label: "🔬 AI Crop Scanner", color: "primary", description: "Diagnose crop diseases", route: "/expert/ai-crop-scanner" },
           { icon: Brain, label: "🧠 AI Advisory", color: "secondary", description: "Expert recommendations", route: "/expert/ai-advisory" },
           { icon: MessageSquare, label: "🤖 AI Assistant", color: "outline", description: "Answer farmer questions", route: "/expert/chat" },
-          { icon: BarChart3, label: "📊 Analytics", color: "outline", description: "Track AI performance", route: "/expert/dashboard" }
+          { icon: BarChart3, label: "📊 Analytics", color: "outline", description: "Track AI performance", route: "/analytics" }
         ];
       case "admin":
         return [

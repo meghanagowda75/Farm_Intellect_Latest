@@ -1,164 +1,267 @@
+
 import { logger } from '../utils/logger.js';
 
-const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || 'https://api.openai.com').replace(/\/$/, '');
-const DEFAULT_CHAT_MODEL = process.env.AI_CHAT_MODEL || 'gpt-4o-mini';
+const getApiKey = () => process.env.GEMINI_API_KEY;
+const getModel = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
-const getAiApiKey = () => {
-  const apiKey = process.env.AI_API_KEY;
+const getApiUrl = (model, stream = false) => {
+  const apiKey = getApiKey();
 
   if (!apiKey) {
-    throw new Error('AI API key is not configured on the backend.');
+    throw new Error('Gemini API key is not configured.');
   }
 
-  return apiKey;
+  const action = stream ? 'streamGenerateContent' : 'generateContent';
+  const query = stream ? '&alt=sse' : '';
+
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${apiKey}${query}`;
 };
 
-const parseErrorPayload = async (response) => {
-  const contentType = response.headers.get('content-type') || '';
+const toGeminiContents = (messages) => {
+  const systemParts = [];
+  const contents = [];
 
-  try {
-    if (contentType.includes('application/json')) {
-      const payload = await response.json();
-      return payload?.error?.message || payload?.error || payload?.message || JSON.stringify(payload);
+  for (const message of messages) {
+    if (message.role === 'system') {
+      systemParts.push(message.content);
+    } else {
+      contents.push({
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: message.content }],
+      });
     }
+  }
 
-    return (await response.text()) || `AI request failed with status ${response.status}`;
+  return {
+    systemInstruction: systemParts.length
+      ? { parts: [{ text: systemParts.join('\n\n') }] }
+      : undefined,
+    contents,
+  };
+};
+
+const parseError = async (response) => {
+  try {
+    const data = await response.json();
+    return data?.error?.message || JSON.stringify(data);
   } catch {
-    return `AI request failed with status ${response.status}`;
+    return `Gemini request failed: ${response.status}`;
   }
 };
 
-/**
- * Standard Chat Completion using OpenAI-compatible endpoints
- */
+// Normal Gemini chat completion
 export const createChatCompletion = async ({
   messages,
-  model = DEFAULT_CHAT_MODEL,
+  model = getModel(),
   temperature = 0.3,
   maxTokens = 700,
 }) => {
-  const apiKey = getAiApiKey();
+  const url = getApiUrl(model);
 
-  const response = await fetch(`${AI_API_BASE_URL}/v1/chat/completions`, {
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: false,
+      ...toGeminiContents(messages),
+      generationConfig: {
+        temperature,
+        maxOutputTokens: maxTokens,
+      },
     }),
   });
 
   if (!response.ok) {
-    const details = await parseErrorPayload(response);
-    logger.error('AI API request failed', {
+    const details = await parseError(response);
+
+    logger.error('Gemini API request failed', {
       status: response.status,
       details,
     });
+
     throw new Error(details);
   }
 
   const payload = await response.json();
-  const content = payload?.choices?.[0]?.message?.content?.trim();
+
+  const content = payload?.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || '')
+    .join('')
+    .trim();
 
   if (!content) {
-    throw new Error('AI provider returned an empty chat response.');
+    throw new Error('Gemini returned an empty chat response.');
   }
 
-  return {
-    content,
-    raw: payload,
-  };
+  return { content, raw: payload };
 };
 
-/**
- * Streaming Chat Completion using OpenAI-compatible endpoints
- */
+// Streaming Gemini chat completion
 export const createChatCompletionStream = async ({
   messages,
-  model = DEFAULT_CHAT_MODEL,
+  model = getModel(),
   temperature = 0.3,
   maxTokens = 700,
   onChunk,
 }) => {
-  const apiKey = getAiApiKey();
+  const url = getApiUrl(model, true);
 
-  const response = await fetch(`${AI_API_BASE_URL}/v1/chat/completions`, {
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: true,
+      ...toGeminiContents(messages),
+      generationConfig: {
+        temperature,
+        maxOutputTokens: maxTokens,
+      },
     }),
   });
 
   if (!response.ok) {
-    const details = await parseErrorPayload(response);
-    logger.error('AI streaming chat failed', { details });
+    const details = await parseError(response);
+
+    logger.error('Gemini streaming request failed', {
+      status: response.status,
+      details,
+    });
+
     throw new Error(details);
   }
 
-  if (onChunk && response.body) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let content = '';
+  if (!onChunk || !response.body) {
+    const payload = await response.json();
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    const content = payload?.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text || '')
+      .join('')
+      .trim();
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.trim().startsWith('data: ')) {
-            const dataStr = line.trim().slice(6);
-            if (dataStr === '[DONE]') continue;
-            
-            try {
-              const data = JSON.parse(dataStr);
-              const deltaContent = data?.choices?.[0]?.delta?.content || '';
-              if (deltaContent) {
-                content += deltaContent;
-                onChunk(deltaContent);
-              }
-            } catch (e) {
-              // Skip parsing errors for partial chunks
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
+    if (!content) {
+      throw new Error('Gemini returned an empty chat response.');
     }
 
-    return {
-      content: content.trim(),
-      raw: { streaming: true },
-    };
+    return { content, raw: payload };
   }
 
-  // Non-streaming fallback
-  const payload = await response.json();
-  const content = payload?.choices?.[0]?.message?.content?.trim();
-  if (!content) {
-    throw new Error('AI provider returned an empty chat response.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  let content = '';
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+
+        const dataStr = line.slice(5).trim();
+
+        if (!dataStr || dataStr === '[DONE]') continue;
+
+        try {
+          const data = JSON.parse(dataStr);
+
+          const chunk = data?.candidates?.[0]?.content?.parts
+            ?.map((part) => part.text || '')
+            .join('');
+
+          if (chunk) {
+            content += chunk;
+            onChunk(chunk);
+          }
+        } catch {
+          // Ignore incomplete streaming event data.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
   }
-  
+
   return {
-    content,
+    content: content.trim(),
+    raw: { streaming: true },
+  };
+};
+
+// Gemini audio transcription
+export const transcribeAudioWithGemini = async ({
+  buffer,
+  mimeType = 'audio/wav',
+  languageCode = 'en-IN',
+}) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('A valid audio buffer is required.');
+  }
+
+  const url = getApiUrl(getModel());
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text:
+                `Transcribe this audio accurately. ` +
+                `The preferred language is ${languageCode}. ` +
+                'Return only the spoken words as text. ' +
+                'Do not answer questions contained in the audio.',
+            },
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: buffer.toString('base64'),
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 1000,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const details = await parseError(response);
+
+    logger.error('Gemini audio transcription failed', {
+      status: response.status,
+      details,
+    });
+
+    throw new Error(details);
+  }
+
+  const payload = await response.json();
+
+  const transcript = payload?.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || '')
+    .join('')
+    .trim();
+
+  if (!transcript) {
+    throw new Error('Gemini returned an empty audio transcription.');
+  }
+
+  return {
+    transcript,
     raw: payload,
   };
 };

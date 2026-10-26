@@ -6,13 +6,6 @@
   "env": {
     "NODE_ENV": "production"
   },
-  "functions": {
-    "backend/**": {
-      "runtime": "nodejs20.x",
-      "memory": 3008,
-      "maxDuration": 30
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",

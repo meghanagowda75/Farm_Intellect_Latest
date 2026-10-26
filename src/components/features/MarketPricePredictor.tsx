@@ -1,41 +1,80 @@
-import { useState, useEffect } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { apiFetch } from "@/lib/api";
+import { useState } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  TrendingUp,
   Target,
   Calendar,
   Brain,
-  AlertTriangle,
-  CheckCircle,
   BarChart3,
-  Zap,
-  Clock
+  Loader2,
+  AlertCircle,
+  Sparkles,
 } from "lucide-react";
 
 interface PriceData {
+  day: number;
   date: string;
   price: number;
-  prediction: number;
-  confidence: number;
 }
 
 interface MarketAnalysis {
   crop: string;
-  currentPrice: number;
   predictedPrice: number;
-  change: number;
-  recommendation: "BUY" | "SELL" | "HOLD";
-  confidence: number;
   factors: string[];
-  optimalSellDate: string;
 }
+
+interface PredictionResponse {
+  prediction: {
+    crop: string;
+    days: number;
+    currency: string;
+    unit: string;
+    estimateOnly: boolean;
+    forecast: {
+      day: number;
+      price: number;
+    }[];
+    factors: string[];
+  };
+}
+
+const cropOptions = [
+  { value: "wheat", label: "Wheat" },
+  { value: "rice", label: "Rice" },
+  { value: "cotton", label: "Cotton" },
+  { value: "maize", label: "Maize" },
+  { value: "soybean", label: "Soybean" },
+  { value: "onion", label: "Onion" },
+  { value: "tomato", label: "Tomato" },
+];
+
+const predictionPeriods = [7, 15, 30, 60, 90];
+
+const selectClassName =
+  "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export const MarketPricePredictor = () => {
   const [selectedCrop, setSelectedCrop] = useState("wheat");
@@ -43,197 +82,195 @@ export const MarketPricePredictor = () => {
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [analysis, setAnalysis] = useState<MarketAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const cropOptions = [
-    { value: "wheat", label: "Wheat", basePrice: 2200 },
-    { value: "rice", label: "Rice", basePrice: 1950 },
-    { value: "cotton", label: "Cotton", basePrice: 6500 },
-    { value: "maize", label: "Maize", basePrice: 1850 },
-    { value: "soybean", label: "Soybean", basePrice: 4200 },
-    { value: "onion", label: "Onion", basePrice: 25 },
-    { value: "tomato", label: "Tomato", basePrice: 35 }
-  ];
+  const runAnalysis = async () => {
+    if (isAnalyzing) return;
 
-  const generatePriceData = (crop: string, days: number) => {
-    const selectedCropData = cropOptions.find(c => c.value === crop);
-    const basePrice = selectedCropData?.basePrice || 2200;
-    const data: PriceData[] = [];
-    
-    // Generate historical data (last 30 days)
-    for (let i = -30; i <= 0; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      
-      const volatility = Math.sin(i * 0.1) * 0.1 + Math.random() * 0.15 - 0.075;
-      const seasonalFactor = Math.sin((date.getMonth() / 12) * 2 * Math.PI) * 0.2;
-      const trendFactor = i * 0.002; // Slight upward trend
-      
-      const price = basePrice * (1 + volatility + seasonalFactor + trendFactor);
-      
-      data.push({
-        date: date.toISOString().split('T')[0],
-        price: Math.round(price),
-        prediction: 0,
-        confidence: 0
-      });
-    }
-    
-    // Generate future predictions
-    for (let i = 1; i <= days; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      
-      const volatility = Math.sin(i * 0.1) * 0.08 + Math.random() * 0.1 - 0.05;
-      const seasonalFactor = Math.sin(((date.getMonth() / 12) * 2 * Math.PI)) * 0.15;
-      const trendFactor = i * 0.001;
-      const aiAdjustment = Math.sin(i * 0.05) * 0.05; // AI pattern recognition
-      
-      const prediction = basePrice * (1 + volatility + seasonalFactor + trendFactor + aiAdjustment);
-      const confidence = Math.max(60, 95 - (i * 1.5)); // Decreasing confidence over time
-      
-      data.push({
-        date: date.toISOString().split('T')[0],
-        price: 0,
-        prediction: Math.round(prediction),
-        confidence: Math.round(confidence)
-      });
-    }
-    
-    return data;
-  };
-
-  const generateAnalysis = (crop: string, data: PriceData[]): MarketAnalysis => {
-    const currentPrice = data.find(d => d.price > 0)?.price || 0;
-    const futureData = data.filter(d => d.prediction > 0);
-    const avgFuturePrice = futureData.reduce((sum, d) => sum + d.prediction, 0) / futureData.length;
-    const change = ((avgFuturePrice - currentPrice) / currentPrice) * 100;
-    
-    let recommendation: "BUY" | "SELL" | "HOLD" = "HOLD";
-    if (change > 5) recommendation = "SELL";
-    else if (change < -5) recommendation = "BUY";
-    
-    const highestPriceDay = futureData.reduce((max, current) => 
-      current.prediction > max.prediction ? current : max
-    );
-    
-    return {
-      crop: crop.charAt(0).toUpperCase() + crop.slice(1),
-      currentPrice,
-      predictedPrice: Math.round(avgFuturePrice),
-      change: Math.round(change * 100) / 100,
-      recommendation,
-      confidence: Math.round(futureData.reduce((sum, d) => sum + d.confidence, 0) / futureData.length),
-      factors: [
-        "Seasonal demand patterns",
-        "Government procurement policies",
-        "Weather forecast impact",
-        "Export market trends",
-        "Storage capacity analysis"
-      ],
-      optimalSellDate: highestPriceDay.date
-    };
-  };
-
-  const runAnalysis = () => {
     setIsAnalyzing(true);
-    
-    setTimeout(() => {
-      const data = generatePriceData(selectedCrop, parseInt(predictionDays));
-      const analysisResult = generateAnalysis(selectedCrop, data);
-      
+    setErrorMessage("");
+    setAnalysis(null);
+    setPriceData([]);
+
+    try {
+      const response = (await apiFetch(
+        "/api/ai/predict-market-price",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            crop: selectedCrop,
+            days: Number(predictionDays),
+          }),
+        }
+      )) as PredictionResponse;
+
+      const result = response?.prediction;
+
+      if (
+        !result ||
+        !Array.isArray(result.forecast) ||
+        result.forecast.length === 0
+      ) {
+        throw new Error(
+          "The prediction service returned no forecast. Please try again."
+        );
+      }
+
+      const validForecast = result.forecast.filter(
+        (point) =>
+          Number.isFinite(point.day) &&
+          Number.isFinite(point.price) &&
+          point.day >= 1 &&
+          point.day <= Number(predictionDays) &&
+          point.price > 0
+      );
+
+      if (validForecast.length === 0) {
+        throw new Error(
+          "No valid prices were returned. Please try again."
+        );
+      }
+
+      const data: PriceData[] = validForecast.map((point) => {
+        const date = new Date();
+        date.setDate(date.getDate() + point.day);
+
+        return {
+          day: point.day,
+          date: date.toLocaleDateString(),
+          price: Math.round(point.price),
+        };
+      });
+
+      const average =
+        data.reduce((sum, point) => sum + point.price, 0) /
+        data.length;
+
+      const cropLabel =
+        cropOptions.find((crop) => crop.value === selectedCrop)?.label ??
+        selectedCrop;
+
       setPriceData(data);
-      setAnalysis(analysisResult);
+      setAnalysis({
+        crop: cropLabel,
+        predictedPrice: Math.round(average),
+        factors: Array.isArray(result.factors)
+          ? result.factors.filter(
+              (factor): factor is string =>
+                typeof factor === "string"
+            )
+          : [],
+      });
+    } catch (error) {
+      console.error("Market price prediction failed:", error);
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate a price estimate. Please try again."
+      );
+    } finally {
       setIsAnalyzing(false);
-    }, 2000);
-  };
-
-  useEffect(() => {
-    runAnalysis();
-  }, [selectedCrop]);
-
-  const getRecommendationColor = (recommendation: string) => {
-    switch (recommendation) {
-      case "BUY": return "bg-green-100 text-green-700 border-green-200";
-      case "SELL": return "bg-red-100 text-red-700 border-red-200";
-      case "HOLD": return "bg-yellow-100 text-yellow-700 border-yellow-200";
-      default: return "bg-gray-100 text-gray-700 border-gray-200";
-    }
-  };
-
-  const getRecommendationIcon = (recommendation: string) => {
-    switch (recommendation) {
-      case "BUY": return <TrendingDown className="h-4 w-4" />;
-      case "SELL": return <TrendingUp className="h-4 w-4" />;
-      case "HOLD": return <Target className="h-4 w-4" />;
-      default: return <Target className="h-4 w-4" />;
     }
   };
 
   return (
-    <Card className="w-full">
+    <Card className="w-full min-w-0 overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Brain className="h-5 w-5 text-primary" />
           AI Market Price Predictor
         </CardTitle>
+
         <p className="text-sm text-muted-foreground">
-          Advanced ML algorithms predict crop prices up to 90 days ahead
+          Generate AI-based crop price estimates for up to 90 days.
         </p>
       </CardHeader>
+
       <CardContent>
         <Tabs defaultValue="predictor" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="predictor">Price Predictor</TabsTrigger>
-            <TabsTrigger value="analysis">Market Analysis</TabsTrigger>
-            <TabsTrigger value="insights">AI Insights</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-3">
+            <TabsTrigger value="predictor">
+              Price Predictor
+            </TabsTrigger>
+            <TabsTrigger value="analysis">
+              Market Analysis
+            </TabsTrigger>
+            <TabsTrigger value="insights">
+              AI Insights
+            </TabsTrigger>
           </TabsList>
-          
-          <TabsContent value="predictor" className="space-y-6">
-            {/* Controls */}
-            <div className="flex flex-wrap gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Select Crop</label>
-                <select 
-                  className="p-2 border rounded"
-                  value={selectedCrop}
-                  onChange={(e) => setSelectedCrop(e.target.value)}
+
+          <TabsContent value="predictor" className="mt-6 space-y-6">
+            <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="min-w-0 space-y-2">
+                <label
+                  htmlFor="market-crop"
+                  className="text-sm font-medium text-foreground"
                 >
-                  {cropOptions.map(crop => (
+                  Select Crop
+                </label>
+
+                <select
+                  id="market-crop"
+                  className={selectClassName}
+                  value={selectedCrop}
+                  disabled={isAnalyzing}
+                  onChange={(event) =>
+                    setSelectedCrop(event.target.value)
+                  }
+                >
+                  {cropOptions.map((crop) => (
                     <option key={crop.value} value={crop.value}>
                       {crop.label}
                     </option>
                   ))}
                 </select>
               </div>
-              
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Prediction Period</label>
-                <select 
-                  className="p-2 border rounded"
-                  value={predictionDays}
-                  onChange={(e) => setPredictionDays(e.target.value)}
+
+              <div className="min-w-0 space-y-2">
+                <label
+                  htmlFor="market-period"
+                  className="text-sm font-medium text-foreground"
                 >
-                  <option value="7">7 Days</option>
-                  <option value="15">15 Days</option>
-                  <option value="30">30 Days</option>
-                  <option value="60">60 Days</option>
-                  <option value="90">90 Days</option>
+                  Prediction Period
+                </label>
+
+                <select
+                  id="market-period"
+                  className={selectClassName}
+                  value={predictionDays}
+                  disabled={isAnalyzing}
+                  onChange={(event) =>
+                    setPredictionDays(event.target.value)
+                  }
+                >
+                  {predictionPeriods.map((days) => (
+                    <option key={days} value={days}>
+                      {days} Days
+                    </option>
+                  ))}
                 </select>
               </div>
-              
+
               <div className="flex items-end">
-                <Button 
+                <Button
+                  type="button"
+                  className="w-full"
                   onClick={runAnalysis}
                   disabled={isAnalyzing}
                 >
                   {isAnalyzing ? (
                     <>
-                      <Brain className="h-4 w-4 mr-2 animate-spin" />
-                      Analyzing...
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating...
                     </>
                   ) : (
                     <>
-                      <BarChart3 className="h-4 w-4 mr-2" />
+                      <BarChart3 className="mr-2 h-4 w-4" />
                       Predict Prices
                     </>
                   )}
@@ -241,235 +278,300 @@ export const MarketPricePredictor = () => {
               </div>
             </div>
 
-            {/* Price Chart */}
-            {priceData.length > 0 && (
-              <div className="space-y-4">
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={priceData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Line 
-                        type="monotone" 
-                        dataKey="price" 
-                        stroke="#2563eb"
-                        strokeWidth={2}
-                        connectNulls={false}
-                        name="Actual Price"
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="prediction" 
-                        stroke="#dc2626"
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        connectNulls={false}
-                        name="Predicted Price"
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                
-                {/* Legend */}
-                <div className="flex justify-center gap-6 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-0.5 bg-blue-600"></div>
-                    <span>Historical Prices</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-0.5 bg-red-600 border-dashed"></div>
-                    <span>AI Predictions</span>
-                  </div>
-                </div>
-              </div>
+            <p className="text-xs text-muted-foreground">
+              Select your crop and forecast period, then click
+              {" "}Predict Prices. Changing either input will not
+              automatically generate another prediction.
+            </p>
+
+            {isAnalyzing && (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="font-medium">
+                    Generating your crop price estimate...
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Gemini is preparing the forecast. This may take a
+                    little time.
+                  </p>
+                </CardContent>
+              </Card>
             )}
 
-            {/* Quick Stats */}
-            {analysis && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {errorMessage && !isAnalyzing && (
+              <Card className="border-destructive/50">
+                <CardContent className="flex items-start gap-3 p-4">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="font-medium">
+                      Prediction failed
+                    </p>
+                    <p className="break-words text-sm text-muted-foreground">
+                      {errorMessage}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={runAnalysis}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {analysis && !isAnalyzing && (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-lg font-semibold">
+                    {analysis.crop} Price Forecast
+                  </h3>
+
+                  <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    AI Estimate
+                  </span>
+                </div>
+
                 <Card>
-                  <CardContent className="p-4 text-center">
-                    <DollarSign className="h-5 w-5 mx-auto mb-2 text-blue-500" />
-                    <p className="text-sm text-muted-foreground">Current Price</p>
-                    <p className="text-lg font-bold">₹{analysis.currentPrice}</p>
+                  <CardContent className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Target className="h-4 w-4" />
+                        Estimated Average Price
+                      </div>
+                      <p className="text-2xl font-bold">
+                        ₹{analysis.predictedPrice.toLocaleString("en-IN")}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Per quintal
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="h-4 w-4" />
+                        Forecast Period
+                      </div>
+                      <p className="text-2xl font-bold">
+                        {predictionDays} days
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {priceData.length} forecast points
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
-                
+
                 <Card>
-                  <CardContent className="p-4 text-center">
-                    <Target className="h-5 w-5 mx-auto mb-2 text-green-500" />
-                    <p className="text-sm text-muted-foreground">Predicted Avg</p>
-                    <p className="text-lg font-bold">₹{analysis.predictedPrice}</p>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    {analysis.change >= 0 ? (
-                      <TrendingUp className="h-5 w-5 mx-auto mb-2 text-green-500" />
-                    ) : (
-                      <TrendingDown className="h-5 w-5 mx-auto mb-2 text-red-500" />
-                    )}
-                    <p className="text-sm text-muted-foreground">Price Change</p>
-                    <p className={`text-lg font-bold ${analysis.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {analysis.change >= 0 ? '+' : ''}{analysis.change}%
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Predicted Price Trend
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent>
+                    <div className="h-72 w-full min-w-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={priceData}
+                          margin={{
+                            top: 10,
+                            right: 12,
+                            left: 12,
+                            bottom: 10,
+                          }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="hsl(var(--border))"
+                          />
+
+                          <XAxis
+                            dataKey="day"
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                            tickFormatter={(day) => `Day ${day}`}
+                          />
+
+                          <YAxis
+                            width={75}
+                            tickLine={false}
+                            axisLine={false}
+                            tick={{ fontSize: 12 }}
+                            tickFormatter={(value) =>
+                              `₹${Number(value).toLocaleString("en-IN")}`
+                            }
+                          />
+
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "hsl(var(--background))",
+                              borderColor: "hsl(var(--border))",
+                              borderRadius: "8px",
+                              color: "hsl(var(--foreground))",
+                            }}
+                            labelFormatter={(day) => `Day ${day}`}
+                            formatter={(value) => [
+                              `₹${Number(value).toLocaleString("en-IN")}`,
+                              "Estimated price per quintal",
+                            ]}
+                          />
+
+                          <Line
+                            type="monotone"
+                            dataKey="price"
+                            name="Estimated price"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth={3}
+                            dot={{
+                              r: 4,
+                              fill: "hsl(var(--primary))",
+                            }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <p className="mt-3 text-center text-xs text-muted-foreground">
+                      Forecast day versus estimated price in ₹ per quintal.
                     </p>
                   </CardContent>
                 </Card>
-                
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <CheckCircle className="h-5 w-5 mx-auto mb-2 text-purple-500" />
-                    <p className="text-sm text-muted-foreground">Confidence</p>
-                    <p className="text-lg font-bold">{analysis.confidence}%</p>
-                  </CardContent>
-                </Card>
+
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  These are AI-generated estimates, not verified live
+                  mandi prices. Check actual local market prices before
+                  making selling decisions.
+                </p>
               </div>
             )}
+
+            {!analysis && !isAnalyzing && !errorMessage && (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+                  <TrendingUp className="h-10 w-10 text-muted-foreground" />
+                  <p className="font-medium">
+                    Ready to forecast crop prices?
+                  </p>
+                  <p className="max-w-md text-sm text-muted-foreground">
+                    Choose a crop and prediction period above, then
+                    click Predict Prices to generate your estimate.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
-          
-          <TabsContent value="analysis" className="space-y-4">
-            {analysis && (
-              <div className="space-y-6">
-                {/* Recommendation Card */}
+
+          <TabsContent value="analysis" className="mt-6 space-y-4">
+            {analysis ? (
+              <>
                 <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xl font-semibold">Market Recommendation</h3>
-                      <Badge className={`${getRecommendationColor(analysis.recommendation)} px-3 py-1 flex items-center gap-2`}>
-                        {getRecommendationIcon(analysis.recommendation)}
-                        {analysis.recommendation}
-                      </Badge>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Current Market Price</p>
-                          <p className="text-2xl font-bold">₹{analysis.currentPrice}</p>
-                        </div>
-                        
-                        <div>
-                          <p className="text-sm text-muted-foreground">Predicted Average Price</p>
-                          <p className="text-2xl font-bold text-blue-600">₹{analysis.predictedPrice}</p>
-                        </div>
-                        
-                        <div>
-                          <p className="text-sm text-muted-foreground">Optimal Selling Date</p>
-                          <p className="text-lg font-semibold text-green-600">
-                            {new Date(analysis.optimalSellDate).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-2">Key Market Factors</p>
-                          <div className="space-y-1">
-                            {analysis.factors.map((factor, index) => (
-                              <div key={index} className="flex items-center gap-2">
-                                <CheckCircle className="h-3 w-3 text-green-500" />
-                                <span className="text-sm">{factor}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  <CardHeader>
+                    <CardTitle>Market Price Estimate</CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Selected crop: {analysis.crop}
+                    </p>
+
+                    <p className="text-2xl font-bold">
+                      ₹{analysis.predictedPrice.toLocaleString("en-IN")}
+                    </p>
+
+                    <p className="text-sm text-muted-foreground">
+                      Estimated average per quintal over the next{" "}
+                      {predictionDays} days.
+                    </p>
                   </CardContent>
                 </Card>
 
-                {/* Market Conditions */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="h-4 w-4 text-orange-500" />
-                        <span className="font-medium">Market Timing</span>
-                      </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Factors Mentioned by Gemini</CardTitle>
+                  </CardHeader>
+
+                  <CardContent>
+                    {analysis.factors.length > 0 ? (
+                      <ul className="list-disc space-y-2 pl-5">
+                        {analysis.factors.map((factor, index) => (
+                          <li key={index} className="text-sm">
+                            {factor}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
                       <p className="text-sm text-muted-foreground">
-                        Based on seasonal patterns and demand cycles
+                        No factors were returned.
                       </p>
-                      <p className="text-xs mt-2 text-green-600">Optimal timing identified</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Zap className="h-4 w-4 text-blue-500" />
-                        <span className="font-medium">Volatility Index</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Price stability and risk assessment
-                      </p>
-                      <p className="text-xs mt-2 text-blue-600">Moderate volatility</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                        <span className="font-medium">Risk Level</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Market uncertainty and external factors
-                      </p>
-                      <p className="text-xs mt-2 text-yellow-600">Low to moderate risk</p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  AI estimate only. No live price verification or
+                  prediction accuracy measurement is available here.
+                </p>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="p-6 text-center text-sm text-muted-foreground">
+                  Generate a prediction from the Price Predictor tab
+                  to see market analysis.
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
-          
-          <TabsContent value="insights" className="space-y-4">
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">AI Model Performance</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-green-600">94.2%</p>
-                      <p className="text-sm text-muted-foreground">Prediction Accuracy</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-blue-600">89.7%</p>
-                      <p className="text-sm text-muted-foreground">Trend Detection</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-purple-600">91.5%</p>
-                      <p className="text-sm text-muted-foreground">Model Confidence</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Advanced Features</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
-                      { title: "Multi-factor Analysis", desc: "Weather, demand, policy, and seasonal factors" },
-                      { title: "Real-time Updates", desc: "Continuous model training with latest market data" },
-                      { title: "Risk Assessment", desc: "Volatility prediction and uncertainty quantification" },
-                      { title: "Optimization Engine", desc: "Best timing for buy/sell decisions" }
-                    ].map((feature, index) => (
-                      <div key={index} className="p-3 border rounded-lg">
-                        <h4 className="font-medium mb-1">{feature.title}</h4>
-                        <p className="text-sm text-muted-foreground">{feature.desc}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+
+          <TabsContent value="insights" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-primary" />
+                  About AI Price Estimates
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Farm Intellect uses Google Gemini through your backend
+                  to generate estimated future prices for the selected crop.
+                </p>
+
+                <ul className="list-disc space-y-2 pl-5">
+                  <li>
+                    Supports wheat, rice, cotton, maize, soybean,
+                    onion, and tomato.
+                  </li>
+                  <li>
+                    Supports forecast periods of 7, 15, 30, 60,
+                    and 90 days.
+                  </li>
+                  <li>
+                    Displays an estimated price trend and factors
+                    that may influence prices.
+                  </li>
+                  <li>
+                    Calls the prediction API only when you click
+                    Predict Prices.
+                  </li>
+                </ul>
+
+                <p className="font-medium text-amber-700 dark:text-amber-400">
+                  Important: AI-generated forecasts are not verified
+                  live mandi prices, guaranteed outcomes, or measured
+                  prediction accuracy. Use actual market data when
+                  making agricultural selling decisions.
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </CardContent>

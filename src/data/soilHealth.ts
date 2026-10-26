@@ -67,7 +67,7 @@ export interface MicronutrientStatus {
 
 export const soilHealthMetadata = createDatasetMetadata({
   version: "1.0.0",
-  lastUpdated: "2024-11-15T00:00:00Z",
+  lastUpdated: "2026-10-01T00:00:00Z",
   source: "ICAR SHC, IISS Bhopal, NBSS&LUP",
   notes: "Aligned with GoI Soil Health Card scheme parameters.",
 });

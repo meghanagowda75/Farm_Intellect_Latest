@@ -1,3 +1,4 @@
+
 import express from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
@@ -5,12 +6,13 @@ import { logActivity } from '../middleware/activity.js';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import {
-  createSarvamChatCompletion,
   synthesizeSarvamSpeech,
   transcribeSarvamAudio,
 } from '../services/sarvam.js';
+import { createChatCompletion } from '../services/llm.js';
 
 const router = express.Router();
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -44,11 +46,18 @@ const getLanguageInstruction = (languageCode) => (
     : 'Reply in the same language as the user whenever possible. If the user switches language, adapt naturally.'
 );
 
-const buildAssistantMessages = ({ user, mode = 'chat', messages, context, languageCode }) => {
+const buildAssistantMessages = ({
+  user,
+  mode = 'chat',
+  messages,
+  context,
+  languageCode,
+}) => {
   const safeMessages = Array.isArray(messages) ? messages : [];
+
   const systemPrompt = [
     MODE_PROMPTS[mode] || MODE_PROMPTS.chat,
-    `The authenticated user is a ${getRoleLabel(user.role)} on Farm Intellect.`,
+    'You are assisting a farmer using Farm Intellect.',
     getLanguageInstruction(languageCode),
     'If information is uncertain, say so clearly and suggest the best next action instead of making up facts.',
   ].join(' ');
@@ -56,7 +65,10 @@ const buildAssistantMessages = ({ user, mode = 'chat', messages, context, langua
   const normalizedMessages = safeMessages
     .filter((message) => message?.content)
     .map((message) => ({
-      role: message.role === 'assistant' || message.role === 'system' ? message.role : 'user',
+      role:
+        message.role === 'assistant' || message.role === 'system'
+          ? message.role
+          : 'user',
       content: String(message.content).trim(),
     }))
     .filter((message) => message.content.length > 0);
@@ -91,14 +103,18 @@ const getStoredConversationMessages = async (userId) => {
 // Get chat history
 router.get('/messages', authenticate, async (req, res) => {
   try {
-    const { page = 1, limit = 50 } = req.query;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(req.query.limit, 10) || 50)
+    );
     const skip = (page - 1) * limit;
 
     const messages = await prisma.chatMessage.findMany({
       where: { userId: req.user.id, deletedAt: null },
-      skip: parseInt(skip),
-      take: parseInt(limit),
-      orderBy: { createdAt: 'asc' }
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'asc' },
     });
 
     res.json({ messages });
@@ -109,15 +125,22 @@ router.get('/messages', authenticate, async (req, res) => {
 });
 
 // Generate a one-off assistant completion without storing the response
-router.post('/complete', authenticate, logActivity, async (req, res) => {
+router.post('/complete', async (req, res) => {
   try {
-    const { messages, context, languageCode, mode = 'chat' } = req.body;
+    const {
+      messages,
+      context,
+      languageCode,
+      mode = 'chat',
+    } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: 'At least one message is required' });
+      return res.status(400).json({
+        error: 'At least one message is required',
+      });
     }
 
-    const completion = await createSarvamChatCompletion({
+    const completion = await createChatCompletion({
       messages: buildAssistantMessages({
         user: req.user,
         mode,
@@ -130,37 +153,32 @@ router.post('/complete', authenticate, logActivity, async (req, res) => {
     res.json({ content: completion.content });
   } catch (error) {
     logger.error('Assistant completion error:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to complete assistant request' });
+    res.status(500).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to complete assistant request',
+    });
   }
 });
 
-// Send message to AI chatbot
+// Send message to AI chatbot using OpenAI
 router.post('/message', authenticate, logActivity, async (req, res) => {
   try {
     const { message, context, languageCode, mode = 'chat' } = req.body;
 
-    if (!message || !message.trim()) {
+    if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
     const trimmedMessage = message.trim();
-
-    // Save user message
-    const userMessage = await prisma.chatMessage.create({
-      data: {
-        userId: req.user.id,
-        message: trimmedMessage,
-        type: 'USER',
-        context: context ? JSON.stringify(context) : null
-      }
-    });
 
     const conversationMessages = [
       ...(await getStoredConversationMessages(req.user.id)),
       { role: 'user', content: trimmedMessage },
     ];
 
-    const completion = await createSarvamChatCompletion({
+    const completion = await createChatCompletion({
       messages: buildAssistantMessages({
         user: req.user,
         mode,
@@ -170,7 +188,16 @@ router.post('/message', authenticate, logActivity, async (req, res) => {
       }),
     });
 
-    // Save AI response
+    // Save messages only after the AI successfully responds.
+    const userMessage = await prisma.chatMessage.create({
+      data: {
+        userId: req.user.id,
+        message: trimmedMessage,
+        type: 'USER',
+        context: context ? JSON.stringify(context) : null,
+      },
+    });
+
     const aiMessage = await prisma.chatMessage.create({
       data: {
         userId: req.user.id,
@@ -180,47 +207,68 @@ router.post('/message', authenticate, logActivity, async (req, res) => {
           originalMessage: trimmedMessage,
           mode,
           languageCode,
-          ...context
-        })
-      }
+          ...(context && typeof context === 'object' ? context : {}),
+        }),
+      },
     });
 
     res.json({
       userMessage,
-      aiMessage
+      aiMessage,
     });
   } catch (error) {
     logger.error('Chat message error:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to process message' });
+    res.status(500).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to process message',
+    });
   }
 });
 
-router.post('/voice/transcribe', authenticate, upload.single('audio'), logActivity, async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Audio file is required' });
+// Transcribe voice input using Sarvam
+router.post(
+  '/voice/transcribe',
+  authenticate,
+  upload.single('audio'),
+  logActivity,
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'Audio file is required',
+        });
+      }
+
+      const { languageCode, mode = 'transcribe' } = req.body;
+
+      const transcription = await transcribeSarvamAudio({
+        buffer: req.file.buffer,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        languageCode,
+        mode,
+      });
+
+      res.json({
+        transcript: transcription?.transcript || '',
+        languageCode: transcription?.language_code || languageCode,
+        requestId: transcription?.request_id,
+      });
+    } catch (error) {
+      logger.error('Voice transcription error:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to transcribe voice input',
+      });
     }
-
-    const { languageCode, mode = 'transcribe' } = req.body;
-    const transcription = await transcribeSarvamAudio({
-      buffer: req.file.buffer,
-      fileName: req.file.originalname,
-      mimeType: req.file.mimetype,
-      languageCode,
-      mode,
-    });
-
-    res.json({
-      transcript: transcription?.transcript || '',
-      languageCode: transcription?.language_code || languageCode,
-      requestId: transcription?.request_id,
-    });
-  } catch (error) {
-    logger.error('Voice transcription error:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to transcribe voice input' });
   }
-});
+);
 
+// Generate speech using Sarvam
 router.post('/voice/speak', authenticate, logActivity, async (req, res) => {
   try {
     const { text, targetLanguageCode, speaker, pace } = req.body;
@@ -243,7 +291,12 @@ router.post('/voice/speak', authenticate, logActivity, async (req, res) => {
     });
   } catch (error) {
     logger.error('Voice synthesis error:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to synthesize speech' });
+    res.status(500).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to synthesize speech',
+    });
   }
 });
 
@@ -252,7 +305,7 @@ router.delete('/messages', authenticate, logActivity, async (req, res) => {
   try {
     await prisma.chatMessage.updateMany({
       where: { userId: req.user.id, deletedAt: null },
-      data: { deletedAt: new Date() }
+      data: { deletedAt: new Date() },
     });
 
     res.json({ message: 'Chat history archived' });

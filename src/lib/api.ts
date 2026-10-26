@@ -1,22 +1,23 @@
-import { supabase, hasSupabaseEnv } from "@/integrations/supabase/client";
-import { buildOfflineUrl, enqueueOfflineRequest } from "@/lib/offlineSync";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  buildOfflineUrl,
+  enqueueOfflineRequest,
+} from "@/lib/offlineSync";
 
-const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL as
+  | string
+  | undefined;
 
-// Determine API base URL based on environment
 const getApiBaseUrl = (): string => {
-  // If explicitly configured via env var, use that (e.g., external backend URL)
   if (configuredBaseUrl) {
-    return configuredBaseUrl.replace(/\/$/, "");
+    return configuredBaseUrl.replace(/\/+$/, "");
   }
-  
-  // In development, use localhost:3001 (local Express backend)
+
   if (import.meta.env.DEV) {
     return "http://localhost:3001";
   }
-  
-  // In production (Vercel), use /api (backend runs on same Vercel project)
-  return "/api";
+
+  return "https://artist-clarity-bacon-volunteers.trycloudflare.com";
 };
 
 export const apiBaseUrl = getApiBaseUrl();
@@ -27,22 +28,47 @@ export class ApiError extends Error {
 
   constructor(message: string, status: number) {
     super(message);
+    this.name = "ApiError";
     this.status = status;
   }
 }
 
-// Client-side mock handler for document and AI operations
-const handleMockApi = (path: string, init: RequestInit = {}): any => {
+// Gemini predictions must receive a live backend response.
+// Never queue these requests for offline synchronization.
+const isLivePredictionRequest = (path: string): boolean => {
+  return path === "/api/ai/predict-market-price";
+};
+
+// Convert an uploaded file to a data URL for demo-mode storage.
+const fileToDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () =>
+      reject(new Error("Could not read uploaded file."));
+
+    reader.readAsDataURL(file);
+  });
+
+// Local mock handler for document operations only.
+const handleMockApi = async (
+  path: string,
+  init: RequestInit = {}
+): Promise<any> => {
   const method = (init.method || "GET").toUpperCase();
-  
+
   const getDocs = () => {
     try {
       const stored = localStorage.getItem("mock_documents");
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      console.error("Failed to parse mock documents", e);
+
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.error("Failed to parse mock documents", error);
     }
-    
+
     const defaults = [
       {
         id: "doc-1",
@@ -51,7 +77,7 @@ const handleMockApi = (path: string, init: RequestInit = {}): any => {
         size: 1420500,
         isVerified: true,
         verifiedAt: "2025-06-10T10:00:00Z",
-        createdAt: "2025-06-09T08:30:00Z"
+        createdAt: "2025-06-09T08:30:00Z",
       },
       {
         id: "doc-2",
@@ -60,7 +86,7 @@ const handleMockApi = (path: string, init: RequestInit = {}): any => {
         size: 524288,
         isVerified: true,
         verifiedAt: "2025-05-15T14:20:00Z",
-        createdAt: "2025-05-15T12:00:00Z"
+        createdAt: "2025-05-15T12:00:00Z",
       },
       {
         id: "doc-3",
@@ -68,10 +94,12 @@ const handleMockApi = (path: string, init: RequestInit = {}): any => {
         originalName: "Soil_Health_Report.pdf",
         size: 2048576,
         isVerified: false,
-        createdAt: "2026-06-17T09:15:00Z"
-      }
+        createdAt: "2026-06-17T09:15:00Z",
+      },
     ];
+
     localStorage.setItem("mock_documents", JSON.stringify(defaults));
+
     return defaults;
   };
 
@@ -87,117 +115,166 @@ const handleMockApi = (path: string, init: RequestInit = {}): any => {
     const formData = init.body as FormData;
     const file = formData?.get("document") as File | null;
     const type = formData?.get("type") as string | null;
-    
+
+    if (!file) {
+      throw new ApiError("Please select a file to upload.", 400);
+    }
+
+    const id = `doc-${Date.now()}`;
+    const dataUrl = await fileToDataUrl(file);
+
+    try {
+      localStorage.setItem(`mock_document_file_${id}`, dataUrl);
+    } catch {
+      throw new ApiError(
+        "Not enough browser storage to save this file. Try a smaller file.",
+        0
+      );
+    }
+
     const newDoc = {
-      id: `doc-${Date.now()}`,
+      id,
       type: type || "OTHER",
-      originalName: file?.name || "Uploaded_Document.pdf",
-      size: file?.size || 102400,
+      originalName: file.name,
+      size: file.size,
       isVerified: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
-    
-    const current = getDocs();
-    const updated = [newDoc, ...current];
+
+    const updated = [newDoc, ...getDocs()];
+
     saveDocs(updated);
-    
+
     return { document: newDoc };
   }
 
-  if (path.startsWith("/api/documents/") && method === "DELETE") {
-    const id = path.split("/").pop();
-    if (id) {
-      const current = getDocs();
-      const updated = current.filter((d: any) => d.id !== id);
-      saveDocs(updated);
+  if (path.startsWith("/api/documents/download/") && method === "GET") {
+    const id = decodeURIComponent(path.split("/").pop() || "");
+    const dataUrl = localStorage.getItem(`mock_document_file_${id}`);
+
+    if (!dataUrl) {
+      throw new ApiError(
+        "This sample document has no downloadable file. Upload a real file first.",
+        404
+      );
     }
-    return { success: true };
+
+    return dataUrl;
   }
 
-  // Intercept crop disease scanner API
-  if (path === "/api/ai/detect-disease" && method === "POST") {
-    const formData = init.body as FormData;
-    const crop = formData?.get("cropType") as string || "wheat";
-    
-    const cropsToDiseases: Record<string, string> = {
-      wheat: "Leaf Rust (Puccinia triticina)",
-      rice: "Blast Disease (Magnaporthe oryzae)",
-      cotton: "Boll Rot (Colletotrichum gossypii)",
-      tomato: "Early Blight (Alternaria solani)",
-      potato: "Late Blight (Phytophthora infestans)",
-      maize: "Northern Leaf Blight (Exserohilum turcicum)"
-    };
-    
-    const disease = cropsToDiseases[crop.toLowerCase()] || "Leaf Spot (Fungal infection)";
-    
-    return {
-      detection: {
-        disease,
-        confidence: Math.round(85 + Math.random() * 10),
-        severity: "moderate",
-        category: "fungal",
-        description: `Typical symptoms of ${disease} observed on the leaf surface. Yellow-to-brown spots or pustules are present, reducing photosynthetic activity and overall yield potential.`,
-        symptomsDetected: ["Yellowing of leaves", "Brown spots", "Powdery lesions"],
-        treatment: {
-          chemical: ["Propiconazole @ 1ml/liter water", "Mancozeb @ 2g/liter water"],
-          organic: ["Neem oil spray @ 5ml/liter water", "Bordeaux mixture @ 1%"],
-          cultural: ["Prune affected leaves", "Improve soil drainage"]
-        },
-        prevention: ["Crop rotation", "Clean field borders", "Use certified disease-resistant seeds"],
-        yieldLossEstimate: "15-25%",
-        urgency: "within_week"
-      }
-    };
+  if (path.startsWith("/api/documents/") && method === "DELETE") {
+    const id = decodeURIComponent(path.split("/").pop() || "");
+
+    if (id) {
+      const updated = getDocs().filter(
+        (doc: any) => doc.id !== id
+      );
+
+      saveDocs(updated);
+      localStorage.removeItem(`mock_document_file_${id}`);
+    }
+
+    return { success: true };
   }
 
   return null;
 };
 
-export const apiFetch = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
-  // If we are in mock mode (no Supabase env) and calling documents/AI scanner, bypass network fetch
-  const isMockablePath = path.startsWith("/api/documents") || path === "/api/ai/detect-disease";
-  if (!hasSupabaseEnv && isMockablePath) {
-    return handleMockApi(path, init) as T;
+export const apiFetch = async <T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> => {
+  const isDocumentPath = path.startsWith("/api/documents");
+  const isPredictionRequest = isLivePredictionRequest(path);
+  const method = (init.method || "GET").toUpperCase();
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+
+  // Keep the existing local mock handling for document operations.
+  if (isDocumentPath) {
+    return (await handleMockApi(path, init)) as T;
   }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const headers = new Headers(init.headers ?? {});
-  const method = (init.method || "GET").toUpperCase();
-  const canQueue = method !== "GET" && !(init.body instanceof FormData);
+  // Only non-GET requests that are not file uploads or Gemini
+  // predictions are eligible for offline queueing.
+  const canQueue =
+    method !== "GET" && !isFormData && !isPredictionRequest;
 
-  if (!(init.body instanceof FormData) && init.body && !headers.has("Content-Type")) {
+  const headers = new Headers(init.headers ?? {});
+
+  if (init.body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  headers.set("Accept", headers.get("Accept") || "application/json");
+  headers.set(
+    "Accept",
+    headers.get("Accept") || "application/json"
+  );
 
-  if (session?.access_token) {
-    headers.set("Authorization", `Bearer ${session.access_token}`);
+  // Attach the current access token if a session is available.
+  // A session lookup failure should not prevent public AI routes
+  // from being called.
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      headers.set(
+        "Authorization",
+        `Bearer ${session.access_token}`
+      );
+    }
+  } catch (error) {
+    console.warn("Could not retrieve the current auth session:", error);
   }
 
-  if (typeof navigator !== "undefined" && !navigator.onLine && canQueue) {
+  // Queue eligible requests only when the browser is offline.
+  if (
+    typeof navigator !== "undefined" &&
+    !navigator.onLine &&
+    canQueue
+  ) {
     enqueueOfflineRequest({
       url: buildOfflineUrl(path),
       method,
       headers: Object.fromEntries(headers.entries()),
-      body: typeof init.body === "string" ? init.body : init.body ? JSON.stringify(init.body) : undefined,
+      body:
+        typeof init.body === "string"
+          ? init.body
+          : init.body
+            ? JSON.stringify(init.body)
+            : undefined,
     });
-    const error = new ApiError("Request queued for sync while offline.", 0);
+
+    const error = new ApiError(
+      "Request queued for sync while offline.",
+      0
+    );
+
     error.queued = true;
+
     throw error;
   }
 
   let response: Response;
+
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
       ...init,
       headers,
     });
   } catch (error) {
-    // If backend is down, fall back to mock documents/AI scanner locally
-    if (isMockablePath) {
-      console.warn("Backend API down. Serving mock API fallback response.");
-      return handleMockApi(path, init) as T;
+    if (isPredictionRequest) {
+      console.error(
+        "Market price prediction backend connection failed:",
+        error
+      );
+
+      throw new ApiError(
+        `Cannot connect to the prediction backend at ${apiBaseUrl}.`,
+        0
+      );
     }
 
     if (canQueue) {
@@ -205,12 +282,24 @@ export const apiFetch = async <T>(path: string, init: RequestInit = {}): Promise
         url: buildOfflineUrl(path),
         method,
         headers: Object.fromEntries(headers.entries()),
-        body: typeof init.body === "string" ? init.body : init.body ? JSON.stringify(init.body) : undefined,
+        body:
+          typeof init.body === "string"
+            ? init.body
+            : init.body
+              ? JSON.stringify(init.body)
+              : undefined,
       });
-      const queuedError = new ApiError("Network error. Request queued for sync.", 0);
+
+      const queuedError = new ApiError(
+        "Network error. Request queued for sync.",
+        0
+      );
+
       queuedError.queued = true;
+
       throw queuedError;
     }
+
     throw error;
   }
 
@@ -219,17 +308,22 @@ export const apiFetch = async <T>(path: string, init: RequestInit = {}): Promise
 
     try {
       const payload = await response.json();
-      message = payload.error || payload.message || message;
+
+      message =
+        payload.error ||
+        payload.message ||
+        message;
     } catch {
-      // keep default message
+      // Retain the default message if the response isn't JSON.
     }
 
     throw new ApiError(message, response.status);
   }
 
   const contentType = response.headers.get("content-type") || "";
+
   if (contentType.includes("application/json")) {
-    return response.json() as Promise<T>;
+    return (await response.json()) as T;
   }
 
   return undefined as T;

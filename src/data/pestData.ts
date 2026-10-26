@@ -43,7 +43,7 @@ export interface PestProfile {
 
 export const pestDataMetadata = createDatasetMetadata({
   version: "1.0.0",
-  lastUpdated: "2024-11-01T00:00:00Z",
+  lastUpdated: "2026-10-01T00:00:00Z",
   source: "NCIPM, ICAR crop protection manuals, FAO pest risk data",
   notes: "Integrated pest profiles with IPM recommendations.",
 });

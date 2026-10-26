@@ -1,3 +1,4 @@
+
 export interface StoredCropReminder {
   id: string;
   date: string;
@@ -75,6 +76,7 @@ const SCHEME_WIZARD_KEY = "phase1-scheme-wizard";
 const GEO_PREFERENCE_KEY = "phase1-geo-preference";
 const EXPERT_BOOKINGS_KEY = "phase1-expert-bookings";
 const DISMISSED_ALERTS_KEY = "phase1-dismissed-alerts";
+
 export const PHASE1_STORAGE_EVENT = "phase1-storage-updated";
 
 const readFromStorage = <T,>(key: string, fallback: T): T => {
@@ -82,11 +84,15 @@ const readFromStorage = <T,>(key: string, fallback: T): T => {
 };
 
 let cachedSummary: any = null;
+let cropPlansSnapshot: StoredCropEntry[] | null = null;
 
 const writeToStorage = <T,>(key: string, value: T) => {
   setSecureItem(key, value);
   cachedSummary = null;
-  window.dispatchEvent(new Event(PHASE1_STORAGE_EVENT));
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(PHASE1_STORAGE_EVENT));
+  }
 };
 
 const defaultFieldHistory: FieldHistoryEntry[] = [
@@ -142,9 +148,16 @@ const defaultFieldHistory: FieldHistoryEntry[] = [
   },
 ];
 
-export const getCropPlans = () => readFromStorage<StoredCropEntry[]>(CROP_PLANS_KEY, []);
+export const getCropPlans = (): StoredCropEntry[] => {
+  if (cropPlansSnapshot === null) {
+    cropPlansSnapshot = readFromStorage<StoredCropEntry[]>(CROP_PLANS_KEY, []);
+  }
+
+  return cropPlansSnapshot;
+};
 
 export const saveCropPlans = (plans: StoredCropEntry[]) => {
+  cropPlansSnapshot = plans;
   writeToStorage(CROP_PLANS_KEY, plans);
 };
 
@@ -208,10 +221,12 @@ export const appendExpertBooking = (booking: ExpertBooking) => {
   saveExpertBookings([booking, ...getExpertBookings()]);
 };
 
-export const getDismissedAlertIds = () => readFromStorage<string[]>(DISMISSED_ALERTS_KEY, []);
+export const getDismissedAlertIds = () =>
+  readFromStorage<string[]>(DISMISSED_ALERTS_KEY, []);
 
 export const dismissAlert = (alertId: string) => {
   const current = getDismissedAlertIds();
+
   if (!current.includes(alertId)) {
     writeToStorage(DISMISSED_ALERTS_KEY, [...current, alertId]);
   }
@@ -231,11 +246,14 @@ export const getPhase1Summary = () => {
 
   cachedSummary = {
     cropPlans: plans.length,
-    openTasks: plans.flatMap((plan) => plan.reminders).filter((reminder) => !reminder.completed).length,
+    openTasks: plans
+      .flatMap((plan) => plan.reminders)
+      .filter((reminder) => !reminder.completed).length,
     fieldEvents: fieldEvents.length,
     schemeMatches: schemeState.matchedSchemeIds.length,
     lastWizardRun: schemeState.lastUpdated,
     expertBookings: expertBookings.length,
   };
+
   return cachedSummary;
 };

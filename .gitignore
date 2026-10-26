@@ -43,3 +43,5 @@ bun.lockb
 .vercel/
 .gradle/
 build/
+.vercel
+.env*

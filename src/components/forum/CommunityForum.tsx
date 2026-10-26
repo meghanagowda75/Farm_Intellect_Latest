@@ -91,7 +91,7 @@ export const CommunityForum = () => {
       likes: 15,
       views: 128,
       comments: 8,
-      createdAt: "2024-01-15T10:30:00Z",
+      createdAt: "2026-09-28T10:30:00Z",
       tags: ["wheat", "winter", "cultivation"]
     },
     {
@@ -107,7 +107,7 @@ export const CommunityForum = () => {
       likes: 23,
       views: 195,
       comments: 12,
-      createdAt: "2024-01-14T14:20:00Z",
+      createdAt: "2026-09-27T14:20:00Z",
       tags: ["cotton", "aphids", "pest-control", "organic"]
     }
   ];

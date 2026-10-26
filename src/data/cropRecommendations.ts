@@ -42,7 +42,7 @@ export interface CropRecommendationData {
 
 export const cropRecommendationsMetadata = createDatasetMetadata({
   version: "1.0.0",
-  lastUpdated: "2024-12-01T00:00:00Z",
+  lastUpdated: "2026-10-01T00:00:00Z",
   source: "Kaggle + ICAR/IARI/state agri universities",
   notes: "Merged nutrient ranges with India-specific agronomy references.",
 });

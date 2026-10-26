@@ -2,35 +2,81 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+
 import { authenticate } from '../middleware/auth.js';
 import { logActivity } from '../middleware/activity.js';
 import prisma from '../config/database.js';
 import { logger } from '../utils/logger.js';
-import { predictYield, forecastPrice, assessPestRisk, recommendCrops, analyzeSoilHealth } from '../services/ml.js';
-import { detectDiseaseFromImage, diagnoseDiseaseFromText } from '../services/cv.js';
-import { classifyForumPost, analyzeSentiment, summarizeAdvisory, matchGovernmentSchemes, generateCropCalendar } from '../services/nlp.js';
+import { createChatCompletion } from '../services/llm.js';
+
+import {
+  predictYield,
+  forecastPrice,
+  assessPestRisk,
+  recommendCrops,
+  analyzeSoilHealth
+} from '../services/ml.js';
+
+import {
+  detectDiseaseFromImage,
+  diagnoseDiseaseFromText
+} from '../services/cv.js';
+
+import {
+  classifyForumPost,
+  analyzeSentiment,
+  summarizeAdvisory,
+  matchGovernmentSchemes,
+  generateCropCalendar
+} from '../services/nlp.js';
+
 import { runInference } from '../services/inferenceClient.js';
 
 const router = express.Router();
 
-const AI_UPLOADS_ROOT = path.resolve(process.cwd(), 'uploads', 'ai-images');
-const ALLOWED_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-const AI_DAILY_QUOTA = parseInt(process.env.AI_DAILY_QUOTA || '200', 10);
+const AI_UPLOADS_ROOT = path.resolve(
+  process.cwd(),
+  'uploads',
+  'ai-images'
+);
+
+const ALLOWED_IMAGE_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp'
+]);
+
+const AI_DAILY_QUOTA = parseInt(
+  process.env.AI_DAILY_QUOTA || '200',
+  10
+);
+
 const aiUsageWindow = new Map();
 
 function isPathInside(baseDir, targetPath) {
   const resolvedBase = path.resolve(baseDir);
   const resolvedTarget = path.resolve(targetPath);
-  return resolvedTarget === resolvedBase || resolvedTarget.startsWith(`${resolvedBase}${path.sep}`);
+
+  return (
+    resolvedTarget === resolvedBase ||
+    resolvedTarget.startsWith(`${resolvedBase}${path.sep}`)
+  );
 }
 
 function safeUnlink(filePath) {
   if (!filePath || !isPathInside(AI_UPLOADS_ROOT, filePath)) {
-    logger.warn('Refused to delete file outside AI uploads directory', { filePath });
+    logger.warn('Refused to delete file outside AI uploads directory', {
+      filePath
+    });
     return;
   }
 
-  const safeFilePath = path.join(AI_UPLOADS_ROOT, path.basename(filePath));
+  const safeFilePath = path.join(
+    AI_UPLOADS_ROOT,
+    path.basename(filePath)
+  );
+
   try {
     fs.unlinkSync(safeFilePath);
   } catch (error) {
@@ -42,21 +88,34 @@ function safeUnlink(filePath) {
 
 function enforceDailyAiQuota(req, res, next) {
   const userId = req.user?.id;
-  if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+  if (!userId) {
+    return res.status(401).json({
+      error: 'Authentication required'
+    });
+  }
 
   const dayKey = new Date().toISOString().slice(0, 10);
   const entry = aiUsageWindow.get(userId);
+
   if (!entry || entry.day !== dayKey) {
-    aiUsageWindow.set(userId, { day: dayKey, count: 1 });
+    aiUsageWindow.set(userId, {
+      day: dayKey,
+      count: 1
+    });
+
     return next();
   }
 
   if (entry.count >= AI_DAILY_QUOTA) {
-    return res.status(429).json({ error: 'Daily AI quota exceeded' });
+    return res.status(429).json({
+      error: 'Daily AI quota exceeded'
+    });
   }
 
   entry.count += 1;
   aiUsageWindow.set(userId, entry);
+
   next();
 }
 
@@ -64,334 +123,925 @@ function validateRequiredFields(requiredFields) {
   return (req, res, next) => {
     for (const field of requiredFields) {
       const value = req.body?.[field];
+
       if (value === undefined || value === null || value === '') {
-        return res.status(400).json({ error: `Missing required field: ${field}` });
+        return res.status(400).json({
+          error: `Missing required field: ${field}`
+        });
       }
     }
+
     next();
   };
 }
 
 const MODEL_VERSIONS = {
-  cropRecommendation: { name: 'crop-recommendation', version: '1.0.0' },
-  yieldPrediction: { name: 'yield-prediction', version: '1.0.0' },
-  priceForecast: { name: 'price-forecast', version: '1.0.0' },
-  pestRisk: { name: 'pest-risk', version: '1.0.0' },
-  diseaseVision: { name: 'disease-vision', version: '1.0.0' },
+  cropRecommendation: {
+    name: 'gemini-crop-recommendation',
+    version: '2.0.0'
+  },
+  yieldPrediction: {
+    name: 'yield-prediction',
+    version: '1.0.0'
+  },
+  priceForecast: {
+    name: 'price-forecast',
+    version: '1.0.0'
+  },
+  pestRisk: {
+    name: 'pest-risk',
+    version: '1.0.0'
+  },
+  diseaseVision: {
+    name: 'disease-vision',
+    version: '1.0.0'
+  }
 };
 
-// Configure multer for AI image uploads
+// Configure multer for AI image uploads.
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), 'uploads', 'ai-images');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
+    if (!fs.existsSync(AI_UPLOADS_ROOT)) {
+      fs.mkdirSync(AI_UPLOADS_ROOT, { recursive: true });
     }
-    cb(null, uploadPath);
+
+    cb(null, AI_UPLOADS_ROOT);
   },
+
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
+    const uniqueSuffix =
+      Date.now() + '-' + Math.round(Math.random() * 1e9);
+
+    const ext = path.extname(file.originalname).toLowerCase();
+
     cb(null, `ai-${uniqueSuffix}${ext}`);
   }
 });
 
 const upload = multer({
   storage,
+
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (file.mimetype.startsWith('image/') && ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
+
+    if (
+      file.mimetype.startsWith('image/') &&
+      ALLOWED_IMAGE_EXTENSIONS.has(ext)
+    ) {
       cb(null, true);
     } else {
-      cb(new Error('Only JPG, JPEG, PNG and WEBP image files are allowed'), false);
+      cb(
+        new Error(
+          'Only JPG, JPEG, PNG and WEBP image files are allowed'
+        ),
+        false
+      );
     }
   },
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+
+  limits: {
+    fileSize: 5 * 1024 * 1024
+  }
 });
 
-// Crop recommendation based on location and soil data
-router.post('/recommend-crops', authenticate, enforceDailyAiQuota, validateRequiredFields(['season']), logActivity, async (req, res) => {
-  try {
-    const { location, soilType, season, farmSize, experience, nitrogen, phosphorus, potassium, ph, temperature, humidity, rainfall } = req.body;
+// Crop recommendations generated by Gemini AI.
+// This endpoint does not require a logged-in user.
+// Keep the app-wide AI rate limiter enabled.
+router.post(
+  '/recommend-crops',
+  validateRequiredFields(['season']),
+  async (req, res) => {
+    try {
+      const {
+        location,
+        soilType,
+        season,
+        farmSize,
+        experience,
+        nitrogen,
+        phosphorus,
+        potassium,
+        ph,
+        temperature,
+        humidity,
+        rainfall,
+        organicCarbon,
+        moisture,
+        irrigationMethod,
+        budget,
+        previousCrop
+      } = req.body;
 
-    // Real ML-powered crop recommendation
-    const { result, source, model } = await runInference({
-      endpoint: '/recommend-crops',
-      payload: req.body,
-      model: MODEL_VERSIONS.cropRecommendation,
-      fallback: () =>
-        recommendCrops({
-          nitrogen: nitrogen || 280,
-          phosphorus: phosphorus || 45,
-          potassium: potassium || 320,
-          ph: ph || 7.0,
-          temperature: temperature || 28,
-          humidity: humidity || 65,
-          rainfall: rainfall || 800,
-          season: season === 'winter' ? 'Rabi' : season === 'monsoon' ? 'Kharif' : season === 'summer' ? 'Zaid' : season,
-          farmSize,
-          experience,
-        }),
-    });
-    const recommendations = result.recommendations || result;
-
-    // Save recommendation to database
-    for (const rec of recommendations) {
-      await prisma.aiRecommendation.create({
-        data: {
-          userId: req.user.id,
-          type: 'crop',
-          title: rec.crop,
-          description: rec.reason,
-          confidence: rec.confidence,
-          data: JSON.stringify(rec)
+      // Keep numeric inputs numeric and preserve missing values.
+      const toNumberOrNull = (value) => {
+        if (
+          value === undefined ||
+          value === null ||
+          value === ''
+        ) {
+          return null;
         }
+
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+      };
+
+      const promptData = {
+        location: location || 'Not specified',
+        soilType: soilType || 'Not specified',
+        season,
+        farmSize: toNumberOrNull(farmSize),
+        previousCrop: previousCrop || experience || 'Not specified',
+
+        soil: {
+          nitrogen: toNumberOrNull(nitrogen),
+          phosphorus: toNumberOrNull(phosphorus),
+          potassium: toNumberOrNull(potassium),
+          ph: toNumberOrNull(ph),
+          organicCarbon: toNumberOrNull(organicCarbon),
+          moisture: toNumberOrNull(moisture)
+        },
+
+        climate: {
+          temperature: toNumberOrNull(temperature),
+          humidity: toNumberOrNull(humidity),
+          rainfall: toNumberOrNull(rainfall)
+        },
+
+        irrigationMethod: irrigationMethod || 'Not specified',
+        budget: toNumberOrNull(budget)
+      };
+
+      // Log inputs for debugging. Do not log API keys or secrets.
+      logger.info('Farm inputs received for crop recommendation', {
+        location: promptData.location,
+        soilType: promptData.soilType,
+        season: promptData.season,
+        farmSize: promptData.farmSize,
+        previousCrop: promptData.previousCrop,
+        soil: promptData.soil,
+        climate: promptData.climate,
+        irrigationMethod: promptData.irrigationMethod,
+        budget: promptData.budget
+      });
+
+      const systemPrompt = `
+You are an agricultural crop suitability advisor for farms in India.
+
+Your task is to recommend crops specifically suited to the farm described
+in the user's input. Do not give a generic list of popular Indian crops.
+
+IMPORTANT RULES:
+
+1. Evaluate every supplied input separately:
+   - Location and regional suitability
+   - Soil type
+   - Season
+   - Farm size
+   - Previous crop
+   - Soil nitrogen, phosphorus and potassium
+   - Soil pH
+   - Organic carbon
+   - Soil moisture
+   - Temperature
+   - Humidity
+   - Rainfall
+   - Irrigation method
+   - Budget
+
+2. Do not ignore available input values. A missing value is marked null.
+   Do not treat null as a measured value or invent a measurement.
+
+3. Consider crop growing-season compatibility, soil requirements,
+   pH tolerance, nutrient requirements, water needs, regional suitability,
+   crop rotation, and the user's budget.
+
+4. Rank crops by their suitability for THIS farm. Prefer crops whose
+   growing requirements match the provided conditions.
+
+5. Do not reuse a fixed recommendation list for every farm.
+   Different inputs should lead to different rankings when those inputs
+   materially affect crop suitability. If two farms have similar conditions,
+   some recommendations may reasonably overlap.
+
+6. Explain the relationship between the actual input values and each crop.
+   The reason must mention specific relevant farm conditions, not merely
+   say that the crop is suitable.
+
+7. Return 3 to 4 distinct crops when enough information is available.
+   Never repeat the same crop under different names. If fewer crops can
+   be responsibly recommended, return fewer.
+
+8. Use scores from 0 to 100. Suitability must reflect the match between
+   the crop's known requirements and the supplied farm conditions.
+   Confidence represents how confident you are in the recommendation,
+   taking missing information into account. Do not make all scores equal.
+
+9. Do not invent exact local market prices, guaranteed profits, or
+   guaranteed yields. If reliable data is unavailable, say so in the
+   relevant field. State assumptions when giving estimates.
+
+10. Risk level must be one of: low, medium, high.
+    Consider mismatches such as unsuitable pH, water limitations,
+    nutrient deficiencies, seasonal incompatibility, and budget constraints.
+
+11. The parameterScores object must include relevant available parameters.
+    Use keys such as soilType, season, ph, nitrogen, phosphorus, potassium,
+    rainfall, temperature, humidity, moisture and budget.
+    Each score must be from 0 to 100 and should describe the crop's match
+    for that parameter. Do not give a high score when a known condition
+    is unsuitable.
+
+12. Return ONLY valid JSON. Do not include Markdown, comments, or text
+    before or after the JSON.
+
+Use this exact JSON structure:
+{
+  "recommendations": [
+    {
+      "crop": "Crop name",
+      "confidence": 80,
+      "suitability": 80,
+      "expectedYield": "Estimate with units, assumptions, or Not available",
+      "profitEstimate": "Estimate with currency, assumptions, or Not available",
+      "growthPeriod": "Approximate duration or Not available",
+      "riskLevel": "medium",
+      "reason": "Explanation linked to the farm's actual input values",
+      "parameterScores": {
+        "soilType": 80,
+        "season": 80,
+        "ph": 80,
+        "nitrogen": 80,
+        "phosphorus": 80,
+        "potassium": 80,
+        "rainfall": 80
+      }
+    }
+  ]
+}
+`;
+
+      const result = await createChatCompletion({
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content:
+              'Recommend crops for the following specific farm. ' +
+              'Evaluate its actual values and rank the crops accordingly. ' +
+              'Farm input JSON:\n' +
+              JSON.stringify(promptData, null, 2)
+          }
+        ],
+        temperature: 0.2,
+        maxTokens: 1800
+      });
+
+      if (!result?.content || typeof result.content !== 'string') {
+        throw new Error('Gemini returned an empty response.');
+      }
+
+      // Parse JSON, including responses wrapped in Markdown fences.
+      const rawContent = result.content
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '')
+        .trim();
+
+      let parsed;
+
+      try {
+        parsed = JSON.parse(rawContent);
+      } catch {
+        const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+
+        if (!jsonMatch) {
+          throw new Error('Gemini response did not contain valid JSON.');
+        }
+
+        parsed = JSON.parse(jsonMatch[0]);
+      }
+
+      if (
+        !parsed ||
+        !Array.isArray(parsed.recommendations) ||
+        parsed.recommendations.length === 0
+      ) {
+        throw new Error('Gemini returned no crop recommendations.');
+      }
+
+      const allowedRiskLevels = new Set([
+        'low',
+        'medium',
+        'high'
+      ]);
+
+      const seenCrops = new Set();
+
+      const cleanedRecommendations = parsed.recommendations
+        .filter((rec) => {
+          if (
+            !rec ||
+            typeof rec.crop !== 'string' ||
+            !rec.crop.trim()
+          ) {
+            return false;
+          }
+
+          const normalizedCrop = rec.crop.trim().toLowerCase();
+
+          if (seenCrops.has(normalizedCrop)) {
+            return false;
+          }
+
+          seenCrops.add(normalizedCrop);
+          return true;
+        })
+        .slice(0, 4)
+        .map((rec) => {
+          const confidence = Number(rec.confidence);
+          const suitability = Number(rec.suitability);
+
+          const parameterScores = {};
+
+          if (
+            rec.parameterScores &&
+            typeof rec.parameterScores === 'object' &&
+            !Array.isArray(rec.parameterScores)
+          ) {
+            for (const [key, value] of Object.entries(
+              rec.parameterScores
+            )) {
+              const score = Number(value);
+
+              if (
+                Number.isFinite(score) &&
+                score >= 0 &&
+                score <= 100
+              ) {
+                parameterScores[key] = score;
+              }
+            }
+          }
+
+          const riskLevel = String(
+            rec.riskLevel || 'medium'
+          ).toLowerCase();
+
+          return {
+            crop: rec.crop.trim(),
+
+            confidence:
+              Number.isFinite(confidence)
+                ? Math.max(0, Math.min(100, confidence))
+                : 0,
+
+            suitability:
+              Number.isFinite(suitability)
+                ? Math.max(0, Math.min(100, suitability))
+                : 0,
+
+            expectedYield:
+              typeof rec.expectedYield === 'string'
+                ? rec.expectedYield
+                : 'Not available',
+
+            profitEstimate:
+              typeof rec.profitEstimate === 'string'
+                ? rec.profitEstimate
+                : 'Not available',
+
+            growthPeriod:
+              typeof rec.growthPeriod === 'string'
+                ? rec.growthPeriod
+                : 'Not available',
+
+            riskLevel: allowedRiskLevels.has(riskLevel)
+              ? riskLevel
+              : 'medium',
+
+            reason:
+              typeof rec.reason === 'string' && rec.reason.trim()
+                ? rec.reason.trim()
+                : 'No explanation provided.',
+
+            parameterScores
+          };
+        });
+
+      if (cleanedRecommendations.length === 0) {
+        throw new Error('Gemini returned no valid crop names.');
+      }
+
+      return res.json({
+        recommendations: cleanedRecommendations,
+        model: {
+          ...MODEL_VERSIONS.cropRecommendation,
+          source: 'gemini'
+        },
+        farmInputs: promptData
+      });
+    } catch (error) {
+      logger.error('Gemini crop recommendation error:', {
+        message: error.message
+      });
+
+      return res.status(502).json({
+        error:
+          'Gemini could not generate crop recommendations. Please try again.'
       });
     }
-
-    res.json({ recommendations, model: { ...model, source } });
-  } catch (error) {
-    logger.error('Crop recommendation error:', error);
-    res.status(500).json({ error: 'Failed to generate crop recommendations' });
   }
-});
+);
 
-// Crop disease detection from image
-router.post('/detect-disease', authenticate, enforceDailyAiQuota, upload.single('image'), logActivity, async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Image is required' });
+// Crop disease detection from image.
+router.post(
+  '/detect-disease',
+  upload.single('image'),
+  logActivity,
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'Image is required'
+        });
+      }
+
+      const { cropType } = req.body;
+
+      const detection = await detectDiseaseFromImage(
+        req.file.path,
+        cropType
+      );
+
+      setTimeout(() => {
+        safeUnlink(req.file.path);
+      }, 60000);
+
+      return res.json({
+        detection,
+        model: {
+          ...MODEL_VERSIONS.diseaseVision,
+          source: detection.source || 'local',
+          fallback: String(detection.source || '').includes('fallback')
+        }
+      });
+    } catch (error) {
+      logger.error('Disease detection error:', {
+        message: error.message
+      });
+
+      if (req.file) {
+        safeUnlink(req.file.path);
+      }
+
+      return res.status(500).json({
+        error: 'Failed to detect disease'
+      });
     }
-
-    const { cropType } = req.body;
-
-    // Real CV-powered disease detection (Sarvam vision + knowledge base)
-    const detection = await detectDiseaseFromImage(req.file.path, cropType);
-
-    // Clean up uploaded file after processing
-    setTimeout(() => {
-      safeUnlink(req.file.path);
-    }, 60000); // Delete after 1 minute
-
-    res.json({
-      detection,
-      model: {
-        ...MODEL_VERSIONS.diseaseVision,
-        source: detection.source || 'local',
-        fallback: String(detection.source || '').includes('fallback'),
-      },
-    });
-  } catch (error) {
-    logger.error('Disease detection error:', error);
-    if (req.file) {
-      safeUnlink(req.file.path);
-    }
-    res.status(500).json({ error: 'Failed to detect disease' });
   }
-});
+);
 
-// Get AI suggestions for farmers
+// Get saved AI suggestions for the authenticated user.
 router.get('/suggestions', authenticate, async (req, res) => {
   try {
     const { type, limit = 10 } = req.query;
 
+    const parsedLimit = Math.min(
+      Math.max(parseInt(limit, 10) || 10, 1),
+      50
+    );
+
     const where = {
       userId: req.user.id,
       isActive: true,
-      ...(type && { type })
+      ...(type ? { type } : {})
     };
 
     const suggestions = await prisma.aiRecommendation.findMany({
       where,
-      take: parseInt(limit),
-      orderBy: { createdAt: 'desc' }
+      take: parsedLimit,
+      orderBy: {
+        createdAt: 'desc'
+      }
     });
 
-    res.json({ suggestions });
+    return res.json({ suggestions });
   } catch (error) {
-    logger.error('Get suggestions error:', error);
-    res.status(500).json({ error: 'Failed to fetch suggestions' });
+    logger.error('Get suggestions error:', {
+      message: error.message
+    });
+
+    return res.status(500).json({
+      error: 'Failed to fetch suggestions'
+    });
   }
 });
 
-// Generate yield prediction
-router.post('/predict-yield', authenticate, enforceDailyAiQuota, validateRequiredFields(['cropType', 'farmSize']), logActivity, async (req, res) => {
-  try {
-    const { cropType, farmSize, soilQuality, soilParams, irrigation, irrigationMethod, fertilizer, fertilizerTiming, weather, pestPressure } = req.body;
+// Generate yield prediction.
+router.post(
+  '/predict-yield',
+  authenticate,
+  enforceDailyAiQuota,
+  validateRequiredFields(['cropType', 'farmSize']),
+  logActivity,
+  async (req, res) => {
+    try {
+      const {
+        cropType,
+        farmSize,
+        soilQuality,
+        soilParams,
+        irrigation,
+        irrigationMethod,
+        fertilizer,
+        fertilizerTiming,
+        weather,
+        pestPressure
+      } = req.body;
 
-    // Real ML-powered yield prediction
-    const { result, source, model } = await runInference({
-      endpoint: '/predict-yield',
-      payload: req.body,
-      model: MODEL_VERSIONS.yieldPrediction,
-      fallback: () =>
-        predictYield({
-          cropType,
-          farmSize,
-          soilQuality,
-          soilParams,
-          irrigation,
-          irrigationMethod,
-          fertilizer,
-          fertilizerTiming,
-          weather,
-          pestPressure,
-        }),
-    });
-    const prediction = result.prediction || result;
+      const { result, source, model } = await runInference({
+        endpoint: '/predict-yield',
+        payload: req.body,
+        model: MODEL_VERSIONS.yieldPrediction,
 
-    res.json({ prediction, model: { ...model, source } });
-  } catch (error) {
-    logger.error('Yield prediction error:', error);
-    res.status(500).json({ error: 'Failed to predict yield' });
+        fallback: () =>
+          predictYield({
+            cropType,
+            farmSize,
+            soilQuality,
+            soilParams,
+            irrigation,
+            irrigationMethod,
+            fertilizer,
+            fertilizerTiming,
+            weather,
+            pestPressure
+          })
+      });
+
+      const prediction = result.prediction || result;
+
+      return res.json({
+        prediction,
+        model: {
+          ...model,
+          source
+        }
+      });
+    } catch (error) {
+      logger.error('Yield prediction error:', {
+        message: error.message
+      });
+
+      return res.status(500).json({
+        error: 'Failed to predict yield'
+      });
+    }
   }
-});
+);
 
-// Get preventive tips for experts dashboard
+// Get preventive tips for experts dashboard.
 router.get('/preventive-tips', authenticate, async (req, res) => {
   try {
     if (!['EXPERT', 'ADMIN'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({
+        error: 'Access denied'
+      });
     }
 
     const { category, season } = req.query;
-
     const tips = getPreventiveTips(category, season);
 
-    res.json({ tips });
+    return res.json({ tips });
   } catch (error) {
-    logger.error('Get preventive tips error:', error);
-    res.status(500).json({ error: 'Failed to fetch preventive tips' });
-  }
-});
-
-// ─── New ML/NLP/CV Routes ──────────────────────────────────────────────────
-
-// Price forecasting
-router.post('/forecast-price', authenticate, logActivity, async (req, res) => {
-  try {
-    const { commodity, months, currentPrice } = req.body;
-    const { result, source, model } = await runInference({
-      endpoint: '/forecast-price',
-      payload: req.body,
-      model: MODEL_VERSIONS.priceForecast,
-      fallback: () => forecastPrice({ commodity, months, currentPrice }),
+    logger.error('Get preventive tips error:', {
+      message: error.message
     });
-    const forecast = result.forecast || result;
-    res.json({ forecast, model: { ...model, source } });
-  } catch (error) {
-    logger.error('Price forecast error:', error);
-    res.status(500).json({ error: 'Failed to forecast prices' });
-  }
-});
 
-// Pest risk assessment
-router.post('/pest-risk', authenticate, logActivity, async (req, res) => {
-  try {
-    const { cropType, temperature, humidity, season, region, previousPestHistory } = req.body;
-    const { result, source, model } = await runInference({
-      endpoint: '/pest-risk',
-      payload: req.body,
-      model: MODEL_VERSIONS.pestRisk,
-      fallback: () => assessPestRisk({ cropType, temperature, humidity, season, region, previousPestHistory }),
+    return res.status(500).json({
+      error: 'Failed to fetch preventive tips'
     });
-    const assessment = result.assessment || result;
-    res.json({ assessment, model: { ...model, source } });
-  } catch (error) {
-    logger.error('Pest risk assessment error:', error);
-    res.status(500).json({ error: 'Failed to assess pest risk' });
   }
 });
 
-// Soil health analysis
-router.post('/soil-analysis', authenticate, logActivity, async (req, res) => {
-  try {
-    const { ph, nitrogen, phosphorus, potassium, organicCarbon, moisture, ec } = req.body;
-    const analysis = analyzeSoilHealth({ ph, nitrogen, phosphorus, potassium, organicCarbon, moisture, ec });
-    res.json({ analysis });
-  } catch (error) {
-    logger.error('Soil analysis error:', error);
-    res.status(500).json({ error: 'Failed to analyze soil' });
-  }
-});
+// Price forecasting.
+router.post(
+  '/forecast-price',
+  authenticate,
+  logActivity,
+  async (req, res) => {
+    try {
+      const { commodity, months, currentPrice } = req.body;
 
-// Text-based disease diagnosis (NLP)
-router.post('/diagnose-disease', authenticate, logActivity, async (req, res) => {
-  try {
-    const { description, cropType } = req.body;
-    if (!description) return res.status(400).json({ error: 'Symptom description is required' });
-    const diagnosis = await diagnoseDiseaseFromText(description, cropType);
-    res.json({ diagnosis });
-  } catch (error) {
-    logger.error('Disease diagnosis error:', error);
-    res.status(500).json({ error: 'Failed to diagnose disease' });
-  }
-});
+      const { result, source, model } = await runInference({
+        endpoint: '/forecast-price',
+        payload: req.body,
+        model: MODEL_VERSIONS.priceForecast,
 
-// Forum post auto-tagging (NLP)
+        fallback: () =>
+          forecastPrice({
+            commodity,
+            months,
+            currentPrice
+          })
+      });
+
+      const forecast = result.forecast || result;
+
+      return res.json({
+        forecast,
+        model: {
+          ...model,
+          source
+        }
+      });
+    } catch (error) {
+      logger.error('Price forecast error:', {
+        message: error.message
+      });
+
+      return res.status(500).json({
+        error: 'Failed to forecast prices'
+      });
+    }
+  }
+);
+
+// Pest risk assessment.
+router.post(
+  '/pest-risk',
+  authenticate,
+  logActivity,
+  async (req, res) => {
+    try {
+      const {
+        cropType,
+        temperature,
+        humidity,
+        season,
+        region,
+        previousPestHistory
+      } = req.body;
+
+      const { result, source, model } = await runInference({
+        endpoint: '/pest-risk',
+        payload: req.body,
+        model: MODEL_VERSIONS.pestRisk,
+
+        fallback: () =>
+          assessPestRisk({
+            cropType,
+            temperature,
+            humidity,
+            season,
+            region,
+            previousPestHistory
+          })
+      });
+
+      const assessment = result.assessment || result;
+
+      return res.json({
+        assessment,
+        model: {
+          ...model,
+          source
+        }
+      });
+    } catch (error) {
+      logger.error('Pest risk assessment error:', {
+        message: error.message
+      });
+
+      return res.status(500).json({
+        error: 'Failed to assess pest risk'
+      });
+    }
+  }
+);
+
+// Soil health analysis.
+router.post(
+  '/soil-analysis',
+  authenticate,
+  logActivity,
+  async (req, res) => {
+    try {
+      const {
+        ph,
+        nitrogen,
+        phosphorus,
+        potassium,
+        organicCarbon,
+        moisture,
+        ec
+      } = req.body;
+
+      const analysis = analyzeSoilHealth({
+        ph,
+        nitrogen,
+        phosphorus,
+        potassium,
+        organicCarbon,
+        moisture,
+        ec
+      });
+
+      return res.json({ analysis });
+    } catch (error) {
+      logger.error('Soil analysis error:', {
+        message: error.message
+      });
+
+      return res.status(500).json({
+        error: 'Failed to analyze soil'
+      });
+    }
+  }
+);
+
+// Text-based disease diagnosis.
+router.post(
+  '/diagnose-disease',
+  authenticate,
+  logActivity,
+  async (req, res) => {
+    try {
+      const { description, cropType } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          error: 'Symptom description is required'
+        });
+      }
+
+      const diagnosis = await diagnoseDiseaseFromText(
+        description,
+        cropType
+      );
+
+      return res.json({ diagnosis });
+    } catch (error) {
+      logger.error('Disease diagnosis error:', {
+        message: error.message
+      });
+
+      return res.status(500).json({
+        error: 'Failed to diagnose disease'
+      });
+    }
+  }
+);
+
+// Forum post auto-tagging.
 router.post('/classify-post', authenticate, async (req, res) => {
   try {
     const { title, body } = req.body;
+
     const classification = await classifyForumPost(title, body);
-    res.json({ classification });
+
+    return res.json({ classification });
   } catch (error) {
-    logger.error('Post classification error:', error);
-    res.status(500).json({ error: 'Failed to classify post' });
+    logger.error('Post classification error:', {
+      message: error.message
+    });
+
+    return res.status(500).json({
+      error: 'Failed to classify post'
+    });
   }
 });
 
-// Sentiment analysis (NLP)
+// Sentiment analysis.
 router.post('/sentiment', authenticate, async (req, res) => {
   try {
     const { text } = req.body;
-    if (!text) return res.status(400).json({ error: 'Text is required' });
+
+    if (!text) {
+      return res.status(400).json({
+        error: 'Text is required'
+      });
+    }
+
     const sentiment = await analyzeSentiment(text);
-    res.json({ sentiment });
+
+    return res.json({ sentiment });
   } catch (error) {
-    logger.error('Sentiment analysis error:', error);
-    res.status(500).json({ error: 'Failed to analyze sentiment' });
+    logger.error('Sentiment analysis error:', {
+      message: error.message
+    });
+
+    return res.status(500).json({
+      error: 'Failed to analyze sentiment'
+    });
   }
 });
 
-// Advisory summarization (NLP)
+// Advisory summarization.
 router.post('/summarize', authenticate, async (req, res) => {
   try {
     const { text, targetLanguage } = req.body;
-    if (!text) return res.status(400).json({ error: 'Text is required' });
+
+    if (!text) {
+      return res.status(400).json({
+        error: 'Text is required'
+      });
+    }
+
     const summary = await summarizeAdvisory(text, targetLanguage);
-    res.json({ summary });
+
+    return res.json({ summary });
   } catch (error) {
-    logger.error('Summarization error:', error);
-    res.status(500).json({ error: 'Failed to summarize' });
+    logger.error('Summarization error:', {
+      message: error.message
+    });
+
+    return res.status(500).json({
+      error: 'Failed to summarize'
+    });
   }
 });
 
-// Government scheme matching (NLP)
-router.post('/match-schemes', authenticate, logActivity, async (req, res) => {
-  try {
-    const { landHolding, cropType, state, category, income } = req.body;
-    const schemes = await matchGovernmentSchemes({ landHolding, cropType, state, category, income });
-    res.json({ schemes });
-  } catch (error) {
-    logger.error('Scheme matching error:', error);
-    res.status(500).json({ error: 'Failed to match schemes' });
+// Government scheme matching.
+router.post(
+  '/match-schemes',
+  authenticate,
+  logActivity,
+  async (req, res) => {
+    try {
+      const {
+        landHolding,
+        cropType,
+        state,
+        category,
+        income
+      } = req.body;
+
+      const schemes = await matchGovernmentSchemes({
+        landHolding,
+        cropType,
+        state,
+        category,
+        income
+      });
+
+      return res.json({ schemes });
+    } catch (error) {
+      logger.error('Scheme matching error:', {
+        message: error.message
+      });
+
+      return res.status(500).json({
+        error: 'Failed to match schemes'
+      });
+    }
   }
-});
+);
 
-// Crop calendar generation (NLP)
-router.post('/crop-calendar', authenticate, logActivity, async (req, res) => {
-  try {
-    const { cropType, location, soilType, sowingDate } = req.body;
-    const calendar = await generateCropCalendar({ cropType, location, soilType, sowingDate });
-    res.json({ calendar });
-  } catch (error) {
-    logger.error('Crop calendar error:', error);
-    res.status(500).json({ error: 'Failed to generate crop calendar' });
+// Crop calendar generation.
+router.post(
+  '/crop-calendar',
+  authenticate,
+  logActivity,
+  async (req, res) => {
+    try {
+      const {
+        cropType,
+        location,
+        soilType,
+        sowingDate
+      } = req.body;
+
+      if (!cropType) {
+        return res.status(400).json({
+          error: 'Crop type is required'
+        });
+      }
+
+      const calendar = await generateCropCalendar({
+        cropType,
+        location,
+        soilType,
+        sowingDate
+      });
+
+      return res.json({ calendar });
+    } catch (error) {
+      logger.error('Crop calendar error:', {
+        message: error.message
+      });
+
+      return res.status(500).json({
+        error: 'Failed to generate crop calendar'
+      });
+    }
   }
-});
+);
 
-// ─── Helper: Preventive tips (kept as static knowledge base) ──────────────────
-
+// Helper: Preventive tips.
 const getPreventiveTips = (category, season) => {
   const tipsByCategory = {
     'pest-control': [
@@ -399,34 +1049,764 @@ const getPreventiveTips = (category, season) => {
       'Install pheromone traps (5-10/hectare) for targeted pest monitoring',
       'Encourage beneficial insects through border crop plantings (marigold, sunflower)',
       'Rotate crops to break pest cycles — follow cereal-pulse-oilseed rotation',
-      'Apply neem-based biopesticide (Azadirachtin 0.03%) as preventive spray at 5ml/L',
+      'Apply neem-based biopesticide (Azadirachtin 0.03%) as preventive spray at 5ml/L'
     ],
+
     'disease-prevention': [
       'Maintain plant spacing per ICAR guidelines for adequate air circulation',
       'Use disease-resistant varieties — check latest PAU/IARI recommendations',
       'Practice 3-year crop rotation to reduce soil-borne pathogen buildup',
       'Apply Trichoderma viride (5g/L) as preventive foliar spray at 15-day intervals',
       'Remove and destroy infected plant debris — do not compost diseased material',
-      'Treat seeds with Carbendazim (2g/kg) or Thiram (2.5g/kg) before sowing',
+      'Treat seeds with Carbendazim (2g/kg) or Thiram (2.5g/kg) before sowing'
     ],
+
     'soil-health': [
       'Get Soil Health Card — free testing at nearest KVK (soilhealth.dac.gov.in)',
       'Apply FYM/compost at 10-15 tonnes/hectare before sowing',
       'Practice green manuring with Dhaincha/Sesbania — 45 days before main crop',
       'Use biofertilizers: Rhizobium (pulses), Azotobacter (cereals), PSB (all crops)',
       'Minimum tillage to preserve soil structure and microbial activity',
-      'Maintain organic carbon above 0.5% — add vermicompost 5 tonnes/ha annually',
+      'Maintain organic carbon above 0.5% — add vermicompost 5 tonnes/ha annually'
     ],
-    'irrigation': [
+
+    irrigation: [
       'Monitor soil moisture with tensiometer or hand-feel method before irrigating',
       'Drip irrigation saves 30-50% water — PMKSY subsidy available (55-75%)',
       'Irrigate at critical growth stages: crown root initiation, flowering, grain filling',
       'Avoid waterlogging — ensure proper field drainage channels',
-      'Mulching reduces evaporation by 25-35% — use crop residue or plastic mulch',
-    ],
+      'Mulching reduces evaporation by 25-35% — use crop residue or plastic mulch'
+    ]
   };
 
   return tipsByCategory[category] || tipsByCategory['pest-control'];
 };
+router.post("/crop-rotation-plan", async (req, res) => {
+  try {
+    const {
+      location,
+      fieldSize,
+      soilType,
+      climateZone,
+      currentCrop,
+      planYears,
+    } = req.body || {};
 
+    const hectares = Number(fieldSize);
+    const years = Number(planYears);
+
+    if (
+      typeof location !== "string" ||
+      !location.trim() ||
+      !Number.isFinite(hectares) ||
+      hectares <= 0 ||
+      hectares > 100000 ||
+      !Number.isInteger(years) ||
+      years < 2 ||
+      years > 5 ||
+      typeof soilType !== "string" ||
+      typeof climateZone !== "string" ||
+      typeof currentCrop !== "string"
+    ) {
+      return res.status(400).json({
+        error: "Please provide valid farm details.",
+      });
+    }
+
+    const prompt = `
+You are an agricultural crop rotation advisor.
+
+Farm information:
+Location: ${location.trim()}
+Field size: ${hectares} hectares
+Soil: ${soilType}
+Climate: ${climateZone}
+Current or last crop: ${currentCrop}
+Planning period: ${years} years
+
+Create a practical crop rotation and intercropping plan suitable
+for the supplied location, soil and climate.
+
+Consider crop families, nutrient needs, seasonal suitability,
+water availability, pest management and sustainable farming.
+
+Return ONLY valid JSON. Do not use Markdown code fences.
+
+Use exactly this structure:
+{
+  "summary": "Brief explanation of the plan",
+  "rotationPlan": [
+    {
+      "year": 1,
+      "season": "Kharif",
+      "primaryCrop": "Crop name",
+      "companion": "Companion crop or empty string",
+      "benefits": ["Benefit 1", "Benefit 2"],
+      "expectedYield": "Qualified estimate or explain what data is needed",
+      "soilHealth": 70,
+      "profitability": 65
+    }
+  ],
+  "intercroppingOptions": [
+    {
+      "mainCrop": "Crop name",
+      "companionCrop": "Crop name",
+      "compatibility": 80,
+      "benefits": ["Benefit 1", "Benefit 2"],
+      "spacing": "Suggested spacing; confirm locally",
+      "yieldIncrease": 0,
+      "difficulty": "Medium"
+    }
+  ]
+}
+
+Generate a rotation spanning the requested number of years.
+soilHealth, profitability and compatibility are approximate scores
+from 0 to 100, not measured farm data.
+Use Easy, Medium or Hard for difficulty.
+Do not guarantee yields or claim unsupported percentage improvements.
+`;
+
+    const completion = await createChatCompletion({
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an agricultural advisor. Return valid JSON only. Do not invent measured farm data.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.2,
+      maxTokens: 3000,
+    });
+
+    const cleaned = completion.content
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+
+    let result;
+
+    try {
+      result = JSON.parse(cleaned);
+    } catch {
+      return res.status(502).json({
+        error: "Gemini returned invalid JSON. Please try again.",
+      });
+    }
+
+    if (
+      !result ||
+      !Array.isArray(result.rotationPlan) ||
+      result.rotationPlan.length === 0 ||
+      !Array.isArray(result.intercroppingOptions)
+    ) {
+      return res.status(502).json({
+        error: "Gemini did not return a valid rotation plan.",
+      });
+    }
+
+    return res.json({
+      summary:
+        typeof result.summary === "string" ? result.summary : "",
+      rotationPlan: result.rotationPlan,
+      intercroppingOptions: result.intercroppingOptions,
+    });
+  } catch (error) {
+    console.error("Crop rotation AI error:", error.message);
+
+    if (/quota|rate.?limit|429|resource exhausted/i.test(error.message)) {
+      return res.status(429).json({
+        error: "Gemini API quota or rate limit exceeded. Try again later.",
+      });
+    }
+
+    return res.status(502).json({
+      error:
+        "Gemini could not generate the plan. Check the backend logs and API configuration.",
+    });
+  }
+});
+router.post("/carbon-footprint-recommendations", async (req, res) => {
+  try {
+    const {
+      farmSize,
+      cropType,
+      irrigationType,
+      fertilizerUsage,
+      powerSource,
+      transportDistance,
+      totalFootprint,
+      reductionPotential,
+      calculations,
+    } = req.body || {};
+
+    const hectares = Number(farmSize);
+    const distance = Number(transportDistance);
+    const footprint = Number(totalFootprint);
+    const reduction = Number(reductionPotential);
+
+    if (
+      !Number.isFinite(hectares) ||
+      hectares <= 0 ||
+      hectares > 100000 ||
+      !Number.isFinite(distance) ||
+      distance < 0 ||
+      distance > 1000000 ||
+      !Number.isFinite(footprint) ||
+      footprint < 0 ||
+      !Number.isFinite(reduction) ||
+      reduction < 0 ||
+      !Array.isArray(calculations) ||
+      calculations.length > 10 ||
+      typeof cropType !== "string" ||
+      typeof irrigationType !== "string" ||
+      typeof fertilizerUsage !== "string" ||
+      typeof powerSource !== "string"
+    ) {
+      return res.status(400).json({
+        error: "Please provide valid farm details and calculation results.",
+      });
+    }
+
+    const allowedCrops = ["wheat", "rice", "maize", "cotton", "soybean"];
+    const allowedIrrigation = ["drip", "sprinkler", "flood"];
+    const allowedFertilizer = ["low", "medium", "high"];
+    const allowedPower = ["solar", "grid", "diesel"];
+
+    if (
+      !allowedCrops.includes(cropType) ||
+      !allowedIrrigation.includes(irrigationType) ||
+      !allowedFertilizer.includes(fertilizerUsage) ||
+      !allowedPower.includes(powerSource)
+    ) {
+      return res.status(400).json({
+        error: "One or more farming selections are invalid.",
+      });
+    }
+
+    const safeCalculations = calculations.map((item) => ({
+      category: String(item?.category || "").slice(0, 80),
+      current: Number(item?.current),
+      optimized: Number(item?.optimized),
+      savings: Number(item?.savings),
+      unit: "tons CO2e",
+    }));
+
+    if (
+      safeCalculations.some(
+        (item) =>
+          !Number.isFinite(item.current) ||
+          !Number.isFinite(item.optimized) ||
+          !Number.isFinite(item.savings) ||
+          item.current < 0 ||
+          item.optimized < 0 ||
+          item.savings < 0
+      )
+    ) {
+      return res.status(400).json({
+        error: "The emissions breakdown contains invalid values.",
+      });
+    }
+
+    const prompt = `
+Create practical carbon-reduction recommendations for this farm.
+
+Farm details:
+- Farm size: ${hectares} hectares
+- Primary crop: ${cropType}
+- Irrigation: ${irrigationType}
+- Fertilizer usage: ${fertilizerUsage}
+- Power source: ${powerSource}
+- Transport distance: ${distance} km
+- Estimated total footprint from the supplied calculator: ${footprint} tons CO2e
+- Estimated reduction potential from the supplied calculator: ${reduction} tons CO2e
+
+Emissions breakdown supplied by the calculator:
+${JSON.stringify(safeCalculations)}
+
+Requirements:
+- Tailor recommendations to these farm inputs.
+- Return 4 to 6 concise, practical recommendations.
+- Prioritize water efficiency, fertilizer management, energy and transport where relevant.
+- Do not claim that you measured actual emissions or verified carbon savings.
+- Do not invent farm measurements, subsidies, market prices or guaranteed percentage savings.
+- Explain that the numerical footprint is an indicative estimate based on simplified factors.
+- Do not claim the farm has earned certified carbon credits.
+- Return ONLY valid JSON, with this structure:
+{
+  "summary": "Short farm-specific summary",
+  "recommendations": [
+    "Practical recommendation"
+  ],
+  "limitations": "Brief note about estimates and the need for local data"
+}
+`;
+
+    const completion = await createChatCompletion({
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a sustainable agriculture advisor. Use the supplied information only, avoid unsupported claims, and return valid JSON only.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.3,
+      maxTokens: 1200,
+    });
+
+    const cleaned = completion.content
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+
+    let result;
+
+    try {
+      result = JSON.parse(cleaned);
+    } catch {
+      return res.status(502).json({
+        error: "Gemini returned an invalid response. Please try again.",
+      });
+    }
+
+    if (
+      typeof result.summary !== "string" ||
+      !Array.isArray(result.recommendations) ||
+      result.recommendations.length === 0
+    ) {
+      return res.status(502).json({
+        error: "Gemini did not return valid recommendations.",
+      });
+    }
+
+    return res.json({
+      summary: result.summary.slice(0, 1500),
+      recommendations: result.recommendations
+        .filter((item) => typeof item === "string")
+        .slice(0, 6)
+        .map((item) => item.slice(0, 500)),
+      limitations:
+        typeof result.limitations === "string"
+          ? result.limitations.slice(0, 1000)
+          : "These results are estimates and are not independently verified.",
+    });
+  } catch (error) {
+    logger.error("Carbon footprint recommendations failed", {
+      message: error?.message,
+    });
+
+    if (/quota|rate.?limit|429|resource exhausted/i.test(error?.message || "")) {
+      return res.status(429).json({
+        error: "Gemini API quota or rate limit exceeded. Please try again later.",
+      });
+    }
+
+    return res.status(502).json({
+      error:
+        "Could not generate recommendations. Check the backend logs and Gemini configuration.",
+    });
+  }
+});
+// Gemini-powered market price prediction
+router.post('/predict-market-price', async (req, res) => {
+  try {
+    const allowedCrops = [
+      'wheat',
+      'rice',
+      'cotton',
+      'maize',
+      'soybean',
+      'onion',
+      'tomato',
+    ];
+
+    const crop = String(req.body?.crop || '').toLowerCase();
+    const days = Number(req.body?.days);
+
+    if (!allowedCrops.includes(crop)) {
+      return res.status(400).json({
+        error: 'Please select a supported crop.',
+      });
+    }
+
+    if (![7, 15, 30, 60, 90].includes(days)) {
+      return res.status(400).json({
+        error: 'Prediction period must be 7, 15, 30, 60, or 90 days.',
+      });
+    }
+
+    const prompt = `
+You are an agricultural market analyst helping farmers in India.
+
+Generate an approximate AI price forecast for the following crop:
+Crop: ${crop}
+Forecast period: ${days} days
+Currency: Indian rupees (INR)
+Unit: rupees per quintal
+
+IMPORTANT:
+- You do not have verified live mandi prices unless explicitly provided.
+- Do not claim to have checked live prices or official market databases.
+- Treat all prices as illustrative AI estimates, not verified market quotations.
+- Do not claim statistical accuracy or guaranteed future prices.
+- Consider general agricultural seasonality, possible supply and demand,
+  weather risks, and market uncertainty.
+- Do not invent specific current mandi prices, dates of official reports,
+  or numerical confidence percentages.
+- Return approximately 5 to 13 forecast points, spaced across the
+  requested period, including day 1 and the final day.
+- Every forecast price must be a positive number in INR per quintal.
+- Give 3 to 5 concise factors affecting the estimate.
+
+Return ONLY valid JSON in exactly this structure:
+{
+  "forecast": [
+    { "day": 1, "price": 2500 },
+    { "day": ${days}, "price": 2550 }
+  ],
+  "factors": [
+    "Possible supply and demand changes",
+    "Seasonal market uncertainty"
+  ]
+}
+
+The example prices are illustrative only. Generate your own
+approximate estimates for the selected crop.
+`;
+
+    const completion = await createChatCompletion({
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.2,
+      maxTokens: 1200,
+    });
+
+    let jsonText = completion.content.trim();
+
+    // Handle JSON returned inside a Markdown code block.
+    jsonText = jsonText
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim();
+
+    const result = JSON.parse(jsonText);
+
+    if (
+      !Array.isArray(result.forecast) ||
+      result.forecast.length === 0 ||
+      !Array.isArray(result.factors)
+    ) {
+      throw new Error('Gemini returned an invalid forecast format.');
+    }
+
+    const forecast = result.forecast
+      .filter(
+        (point) =>
+          Number.isFinite(Number(point.day)) &&
+          Number(point.day) >= 1 &&
+          Number(point.day) <= days &&
+          Number.isFinite(Number(point.price)) &&
+          Number(point.price) > 0
+      )
+      .map((point) => ({
+        day: Number(point.day),
+        price: Math.round(Number(point.price)),
+      }))
+      .sort((a, b) => a.day - b.day);
+
+    if (forecast.length === 0) {
+      throw new Error('Gemini did not return usable forecast points.');
+    }
+
+    return res.json({
+      prediction: {
+        crop,
+        days,
+        currency: 'INR',
+        unit: 'quintal',
+        estimateOnly: true,
+        forecast,
+        factors: result.factors
+          .filter((factor) => typeof factor === 'string')
+          .slice(0, 5),
+      },
+    });
+  } catch (error) {
+    logger.error('Gemini market price prediction failed:', error);
+
+    return res.status(502).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Unable to generate a market price estimate.',
+    });
+  }
+});
+// Batch Gemini-powered market price forecasts.
+// Generates forecasts for multiple crops in a single Gemini request.
+router.post('/predict-market-prices-batch', async (req, res) => {
+  try {
+    const allowedCrops = [
+      'wheat',
+      'rice',
+      'maize',
+      'soybean',
+      'onion',
+      'cotton',
+      'tomato',
+    ];
+
+    const requestedCrops = req.body?.crops;
+    const days = Number(req.body?.days ?? 7);
+
+    if (
+      !Array.isArray(requestedCrops) ||
+      requestedCrops.length === 0 ||
+      requestedCrops.length > 7
+    ) {
+      return res.status(400).json({
+        error: 'Provide between 1 and 7 supported crops.',
+      });
+    }
+
+    if (![7, 15, 30, 60, 90].includes(days)) {
+      return res.status(400).json({
+        error: 'Prediction period must be 7, 15, 30, 60, or 90 days.',
+      });
+    }
+
+    const crops = [
+      ...new Set(
+        requestedCrops.map((crop) =>
+          String(crop).trim().toLowerCase()
+        )
+      ),
+    ];
+
+    const invalidCrops = crops.filter(
+      (crop) => !allowedCrops.includes(crop)
+    );
+
+    if (invalidCrops.length > 0) {
+      return res.status(400).json({
+        error: `Unsupported crops: ${invalidCrops.join(', ')}`,
+      });
+    }
+
+    const prompt = `
+You are an agricultural market analyst specializing in Indian crops.
+
+Generate approximate price estimates for ALL these crops:
+${crops.join(', ')}
+
+Forecast period: ${days} days
+Currency: INR
+Price unit: rupees per quintal
+
+For every crop:
+1. Generate 5 forecast points, on days 1, 2, 4, ${Math.max(
+      5,
+      Math.floor(days * 0.65)
+    )}, and ${days}. If days overlap, use distinct days distributed
+   across the period. Include day 1 and the final day.
+2. Use positive numerical prices that are plausible illustrative
+   estimates for that crop in India. Do not present them as verified
+   market quotations.
+3. Give 2 or 3 crop-specific factors. Avoid repeating the same generic
+   factors for every crop. Consider relevant supply, demand, seasonality,
+   storage, perishability, processing demand and possible weather risks.
+4. Give a short trend: "Rising", "Falling", or "Stable".
+5. Give one practical recommendation, clearly qualified as general
+   guidance rather than a guaranteed trading decision.
+6. Do not claim to have accessed live mandi prices, official databases,
+   current market reports, or verified weather data.
+7. Do not invent current market prices, official statistics, or
+   numerical confidence scores.
+
+Return ONLY valid JSON, with no Markdown or surrounding explanation.
+
+Use exactly this structure:
+{
+  "predictions": [
+    {
+      "crop": "wheat",
+      "forecast": [
+        { "day": 1, "price": 2500 },
+        { "day": 2, "price": 2510 },
+        { "day": 4, "price": 2520 },
+        { "day": 5, "price": 2530 },
+        { "day": ${days}, "price": 2540 }
+      ],
+      "factors": [
+        "A crop-specific market factor",
+        "Another crop-specific factor"
+      ],
+      "trend": "Stable",
+      "recommendation": "A short, cautious recommendation"
+    }
+  ]
+}
+
+Include exactly one prediction for each requested crop.
+Use different crop-specific explanations. The sample values are illustrative,
+not verified prices. Return all requested crops in one response.
+`;
+
+    const completion = await createChatCompletion({
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.2,
+      maxTokens: 2200,
+    });
+
+    if (
+      !completion?.content ||
+      typeof completion.content !== 'string'
+    ) {
+      throw new Error('Gemini returned an empty response.');
+    }
+
+    const cleaned = completion.content
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim();
+
+    let result;
+
+    try {
+      result = JSON.parse(cleaned);
+    } catch {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+
+      if (!match) {
+        throw new Error('Gemini returned invalid JSON.');
+      }
+
+      result = JSON.parse(match[0]);
+    }
+
+    if (!Array.isArray(result?.predictions)) {
+      throw new Error('Gemini returned an invalid batch forecast.');
+    }
+
+    const predictions = crops
+      .map((crop) => {
+        const item = result.predictions.find(
+          (prediction) =>
+            String(prediction?.crop || '').toLowerCase().trim() ===
+            crop
+        );
+
+        if (!item || !Array.isArray(item.forecast)) {
+          return null;
+        }
+
+        const forecast = item.forecast
+          .filter((point) => {
+            const day = Number(point?.day);
+            const price = Number(point?.price);
+
+            return (
+              Number.isInteger(day) &&
+              day >= 1 &&
+              day <= days &&
+              Number.isFinite(price) &&
+              price > 0
+            );
+          })
+          .map((point) => ({
+            day: Number(point.day),
+            price: Math.round(Number(point.price)),
+          }))
+          .sort((a, b) => a.day - b.day);
+
+        if (forecast.length === 0) {
+          return null;
+        }
+
+        const factors = Array.isArray(item.factors)
+          ? item.factors
+              .filter(
+                (factor) =>
+                  typeof factor === 'string' && factor.trim()
+              )
+              .slice(0, 3)
+          : [];
+
+        const allowedTrends = [
+          'Rising',
+          'Falling',
+          'Stable',
+        ];
+
+        const matchedTrend = allowedTrends.find(
+          (trend) =>
+            trend.toLowerCase() ===
+            String(item.trend || '').toLowerCase().trim()
+        );
+
+        return {
+          crop,
+          days,
+          currency: 'INR',
+          unit: 'quintal',
+          estimateOnly: true,
+          forecast,
+          factors,
+          trend: matchedTrend || 'Stable',
+          recommendation:
+            typeof item.recommendation === 'string'
+              ? item.recommendation.slice(0, 300)
+              : 'Compare these illustrative estimates with verified local market prices before making a selling decision.',
+        };
+      })
+      .filter(Boolean);
+
+    if (predictions.length === 0) {
+      throw new Error('No usable crop forecasts were returned.');
+    }
+
+    return res.json({
+      predictions,
+      requestedCount: crops.length,
+      returnedCount: predictions.length,
+      estimateOnly: true,
+      source: 'gemini',
+      message:
+        'These are AI-generated estimates, not verified live mandi prices.',
+    });
+  } catch (error) {
+    logger.error('Gemini batch market price prediction failed:', {
+      message: error?.message,
+    });
+
+    const message = error?.message || '';
+
+    if (/quota|rate.?limit|429|resource exhausted/i.test(message)) {
+      return res.status(429).json({
+        error: 'Gemini API quota or rate limit exceeded. Please try again later.',
+      });
+    }
+
+    return res.status(502).json({
+      error: 'Unable to generate batch market forecasts. Check the backend logs and Gemini configuration.',
+    });
+  }
+});
 export default router;

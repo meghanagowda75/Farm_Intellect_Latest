@@ -1,3 +1,4 @@
+
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
@@ -34,19 +35,26 @@ const localeLoaders: Record<Language, () => Promise<Record<string, string>>> = {
 const loadedLanguages = new Set<string>();
 
 export const loadLanguageResources = async (language: Language) => {
+  if (!i18n.isInitialized) {
+    await initI18n();
+  }
+
   if (loadedLanguages.has(language)) return;
+
   const loader = localeLoaders[language] ?? localeLoaders[DEFAULT_LANGUAGE];
   const translation = await loader();
+
   if (!i18n.hasResourceBundle(language, "translation")) {
     i18n.addResourceBundle(language, "translation", translation, true, true);
   }
+
   loadedLanguages.add(language);
 };
 
 export const initI18n = async () => {
   if (i18n.isInitialized) return i18n;
 
-  await loadLanguageResources(DEFAULT_LANGUAGE);
+  const translation = await localeLoaders[DEFAULT_LANGUAGE]();
 
   await i18n
     .use(LanguageDetector)
@@ -56,10 +64,12 @@ export const initI18n = async () => {
       fallbackLng: DEFAULT_LANGUAGE,
       resources: {
         [DEFAULT_LANGUAGE]: {
-          translation: i18n.getResourceBundle(DEFAULT_LANGUAGE, "translation") || {},
+          translation,
         },
       },
-      interpolation: { escapeValue: false },
+      interpolation: {
+        escapeValue: false,
+      },
       detection: {
         order: ["localStorage", "navigator"],
         lookupLocalStorage: "app-language",
@@ -69,6 +79,8 @@ export const initI18n = async () => {
         useSuspense: false,
       },
     });
+
+  loadedLanguages.add(DEFAULT_LANGUAGE);
 
   return i18n;
 };
