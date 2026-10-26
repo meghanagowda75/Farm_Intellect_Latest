@@ -2,7 +2,7 @@
 import { logger } from '../utils/logger.js';
 
 const getApiKey = () => process.env.GEMINI_API_KEY;
-const getModel = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const getModel = () => process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
 const getApiUrl = (model, stream = false) => {
   const apiKey = getApiKey();
