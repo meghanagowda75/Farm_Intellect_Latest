@@ -17,7 +17,7 @@ const getApiBaseUrl = (): string => {
     return "http://localhost:3001";
   }
 
-  return "https://artist-clarity-bacon-volunteers.trycloudflare.com";
+  return "https://farm-intellect-api.onrender.com";
 };
 
 export const apiBaseUrl = getApiBaseUrl();
