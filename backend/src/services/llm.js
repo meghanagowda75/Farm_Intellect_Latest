@@ -54,7 +54,7 @@ export const createChatCompletion = async ({
   messages,
   model = getModel(),
   temperature = 0.3,
-  maxTokens = 700,
+  maxTokens = 350,
 }) => {
   const url = getApiUrl(model);
 
