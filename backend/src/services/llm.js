@@ -2,7 +2,7 @@
 import { logger } from '../utils/logger.js';
 
 const getApiKey = () => process.env.GEMINI_API_KEY;
-const getModel = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const getModel = () => process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
 const getApiUrl = (model, stream = false) => {
   const apiKey = getApiKey();
@@ -17,11 +17,15 @@ const getApiUrl = (model, stream = false) => {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${apiKey}${query}`;
 };
 
-const toGeminiContents = (messages) => {
+const toGeminiContents = (messages = []) => {
   const systemParts = [];
   const contents = [];
 
   for (const message of messages) {
+    if (!message || typeof message.content !== 'string') {
+      continue;
+    }
+
     if (message.role === 'system') {
       systemParts.push(message.content);
     } else {
@@ -49,6 +53,12 @@ const parseError = async (response) => {
   }
 };
 
+const extractText = (payload) =>
+  payload?.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || '')
+    .join('')
+    .trim();
+
 // Normal Gemini chat completion
 export const createChatCompletion = async ({
   messages,
@@ -57,42 +67,54 @@ export const createChatCompletion = async ({
   maxTokens = 350,
 }) => {
   const url = getApiUrl(model);
+  const startTime = Date.now();
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ...toGeminiContents(messages),
-      generationConfig: {
-        temperature,
-        maxOutputTokens: maxTokens,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const details = await parseError(response);
-
-    logger.error('Gemini API request failed', {
-      status: response.status,
-      details,
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...toGeminiContents(messages),
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+        },
+      }),
     });
 
-    throw new Error(details);
+    logger.info(
+      `Gemini response headers received in ${Date.now() - startTime} ms`
+    );
+
+    if (!response.ok) {
+      const details = await parseError(response);
+
+      logger.error('Gemini API request failed', {
+        status: response.status,
+        details,
+      });
+
+      throw new Error(details);
+    }
+
+    const payload = await response.json();
+    const content = extractText(payload);
+
+    if (!content) {
+      throw new Error('Gemini returned an empty chat response.');
+    }
+
+    logger.info(
+      `Gemini completion finished in ${Date.now() - startTime} ms`
+    );
+
+    return { content, raw: payload };
+  } catch (error) {
+    logger.error(
+      `Gemini completion failed after ${Date.now() - startTime} ms`
+    );
+    throw error;
   }
-
-  const payload = await response.json();
-
-  const content = payload?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || '')
-    .join('')
-    .trim();
-
-  if (!content) {
-    throw new Error('Gemini returned an empty chat response.');
-  }
-
-  return { content, raw: payload };
 };
 
 // Streaming Gemini chat completion
@@ -100,10 +122,11 @@ export const createChatCompletionStream = async ({
   messages,
   model = getModel(),
   temperature = 0.3,
-  maxTokens = 700,
+  maxTokens = 350,
   onChunk,
 }) => {
   const url = getApiUrl(model, true);
+  const startTime = Date.now();
 
   const response = await fetch(url, {
     method: 'POST',
@@ -116,6 +139,10 @@ export const createChatCompletionStream = async ({
       },
     }),
   });
+
+  logger.info(
+    `Gemini streaming headers received in ${Date.now() - startTime} ms`
+  );
 
   if (!response.ok) {
     const details = await parseError(response);
@@ -130,11 +157,7 @@ export const createChatCompletionStream = async ({
 
   if (!onChunk || !response.body) {
     const payload = await response.json();
-
-    const content = payload?.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text || '')
-      .join('')
-      .trim();
+    const content = extractText(payload);
 
     if (!content) {
       throw new Error('Gemini returned an empty chat response.');
@@ -169,7 +192,6 @@ export const createChatCompletionStream = async ({
 
         try {
           const data = JSON.parse(dataStr);
-
           const chunk = data?.candidates?.[0]?.content?.parts
             ?.map((part) => part.text || '')
             .join('');
@@ -186,6 +208,10 @@ export const createChatCompletionStream = async ({
   } finally {
     reader.releaseLock();
   }
+
+  logger.info(
+    `Gemini streaming completion finished in ${Date.now() - startTime} ms`
+  );
 
   return {
     content: content.trim(),
@@ -204,12 +230,11 @@ export const transcribeAudioWithGemini = async ({
   }
 
   const url = getApiUrl(getModel());
+  const startTime = Date.now();
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [
         {
@@ -238,6 +263,10 @@ export const transcribeAudioWithGemini = async ({
     }),
   });
 
+  logger.info(
+    `Gemini transcription headers received in ${Date.now() - startTime} ms`
+  );
+
   if (!response.ok) {
     const details = await parseError(response);
 
@@ -250,15 +279,15 @@ export const transcribeAudioWithGemini = async ({
   }
 
   const payload = await response.json();
-
-  const transcript = payload?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || '')
-    .join('')
-    .trim();
+  const transcript = extractText(payload);
 
   if (!transcript) {
     throw new Error('Gemini returned an empty audio transcription.');
   }
+
+  logger.info(
+    `Gemini transcription finished in ${Date.now() - startTime} ms`
+  );
 
   return {
     transcript,
