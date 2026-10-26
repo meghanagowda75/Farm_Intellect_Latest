@@ -1,4 +1,3 @@
-
 import express from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
@@ -22,22 +21,9 @@ const CHAT_HISTORY_LIMIT = 12;
 
 const MODE_PROMPTS = {
   chat: 'You are Farm Intellect, a practical agricultural assistant for Indian farmers. Give accurate, concise, farmer-friendly advice. Prefer actionable bullet points when useful and stay grounded in agronomy, weather risk, pests, soil health, irrigation, crop calendars, mandi realities, and government schemes.',
-  disease: 'You are an agricultural plant-pathology assistant. Diagnose likely crop disease causes from symptoms only and never pretend you visually inspected an image unless the user explicitly described it. Always include likely disease, confidence, severity, treatment, prevention, and a short markdown analysis.',
+  disease: 'You are an agricultural plant-pathology assistant. Diagnose likely crop disease causes from symptoms only. Never claim to have inspected an image unless an image was actually provided and processed. Include likely disease, confidence, severity, treatment, prevention, and a short analysis.',
   recommendation: 'You are an Indian crop planning advisor. Recommend crops based on season, soil, location, water access, and farmer goals. Explain trade-offs, expected risks, and next steps.',
   yield: 'You are an agricultural forecasting assistant. Estimate yield carefully, explain assumptions, list risk factors, and avoid false precision.',
-};
-
-const getRoleLabel = (role) => {
-  switch (role) {
-    case 'ADMIN':
-      return 'platform administrator';
-    case 'EXPERT':
-      return 'agriculture expert';
-    case 'MERCHANT':
-      return 'merchant';
-    default:
-      return 'farmer';
-  }
 };
 
 const getLanguageInstruction = (languageCode) => (
@@ -47,7 +33,6 @@ const getLanguageInstruction = (languageCode) => (
 );
 
 const buildAssistantMessages = ({
-  user,
   mode = 'chat',
   messages,
   context,
@@ -63,22 +48,27 @@ const buildAssistantMessages = ({
   ].join(' ');
 
   const normalizedMessages = safeMessages
-    .filter((message) => message?.content)
+    .filter(
+      (message) =>
+        message &&
+        typeof message.content === 'string' &&
+        message.content.trim().length > 0
+    )
     .map((message) => ({
-      role:
-        message.role === 'assistant' || message.role === 'system'
-          ? message.role
-          : 'user',
-      content: String(message.content).trim(),
-    }))
-    .filter((message) => message.content.length > 0);
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: message.content.trim(),
+    }));
 
-  const contextMessage = context && Object.keys(context).length
-    ? {
-        role: 'system',
-        content: `Conversation context:\n${JSON.stringify(context, null, 2)}`,
-      }
-    : null;
+  const contextMessage =
+    context &&
+    typeof context === 'object' &&
+    !Array.isArray(context) &&
+    Object.keys(context).length > 0
+      ? {
+          role: 'system',
+          content: `Conversation context:\n${JSON.stringify(context, null, 2)}`,
+        }
+      : null;
 
   return [
     { role: 'system', content: systemPrompt },
@@ -98,6 +88,15 @@ const getStoredConversationMessages = async (userId) => {
     role: message.type === 'AI_ASSISTANT' ? 'assistant' : 'user',
     content: message.message,
   }));
+};
+
+// Optional authentication for routes that support both guests and logged-in users.
+const optionalAuthenticate = (req, res, next) => {
+  if (req.headers.authorization) {
+    return authenticate(req, res, next);
+  }
+
+  next();
 };
 
 // Get chat history
@@ -125,14 +124,14 @@ router.get('/messages', authenticate, async (req, res) => {
 });
 
 // Generate a one-off assistant completion without storing the response
-router.post('/complete', async (req, res) => {
+router.post('/complete', optionalAuthenticate, async (req, res) => {
   try {
     const {
       messages,
       context,
       languageCode,
       mode = 'chat',
-    } = req.body;
+    } = req.body ?? {};
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -142,7 +141,6 @@ router.post('/complete', async (req, res) => {
 
     const completion = await createChatCompletion({
       messages: buildAssistantMessages({
-        user: req.user,
         mode,
         messages,
         context,
@@ -150,9 +148,14 @@ router.post('/complete', async (req, res) => {
       }),
     });
 
+    if (!completion || typeof completion.content !== 'string') {
+      throw new Error('AI service returned an invalid response');
+    }
+
     res.json({ content: completion.content });
   } catch (error) {
     logger.error('Assistant completion error:', error);
+
     res.status(500).json({
       error:
         error instanceof Error
@@ -165,7 +168,7 @@ router.post('/complete', async (req, res) => {
 // Send message to AI chatbot using OpenAI
 router.post('/message', authenticate, logActivity, async (req, res) => {
   try {
-    const { message, context, languageCode, mode = 'chat' } = req.body;
+    const { message, context, languageCode, mode = 'chat' } = req.body ?? {};
 
     if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'Message is required' });
@@ -180,7 +183,6 @@ router.post('/message', authenticate, logActivity, async (req, res) => {
 
     const completion = await createChatCompletion({
       messages: buildAssistantMessages({
-        user: req.user,
         mode,
         messages: conversationMessages,
         context,
@@ -188,7 +190,10 @@ router.post('/message', authenticate, logActivity, async (req, res) => {
       }),
     });
 
-    // Save messages only after the AI successfully responds.
+    if (!completion || typeof completion.content !== 'string') {
+      throw new Error('AI service returned an invalid response');
+    }
+
     const userMessage = await prisma.chatMessage.create({
       data: {
         userId: req.user.id,
@@ -207,17 +212,17 @@ router.post('/message', authenticate, logActivity, async (req, res) => {
           originalMessage: trimmedMessage,
           mode,
           languageCode,
-          ...(context && typeof context === 'object' ? context : {}),
+          ...(context && typeof context === 'object' && !Array.isArray(context)
+            ? context
+            : {}),
         }),
       },
     });
 
-    res.json({
-      userMessage,
-      aiMessage,
-    });
+    res.json({ userMessage, aiMessage });
   } catch (error) {
     logger.error('Chat message error:', error);
+
     res.status(500).json({
       error:
         error instanceof Error
@@ -241,7 +246,7 @@ router.post(
         });
       }
 
-      const { languageCode, mode = 'transcribe' } = req.body;
+      const { languageCode, mode = 'transcribe' } = req.body ?? {};
 
       const transcription = await transcribeSarvamAudio({
         buffer: req.file.buffer,
@@ -258,6 +263,7 @@ router.post(
       });
     } catch (error) {
       logger.error('Voice transcription error:', error);
+
       res.status(500).json({
         error:
           error instanceof Error
@@ -271,14 +277,14 @@ router.post(
 // Generate speech using Sarvam
 router.post('/voice/speak', authenticate, logActivity, async (req, res) => {
   try {
-    const { text, targetLanguageCode, speaker, pace } = req.body;
+    const { text, targetLanguageCode, speaker, pace } = req.body ?? {};
 
-    if (!text || !String(text).trim()) {
+    if (typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'Text is required' });
     }
 
     const speech = await synthesizeSarvamSpeech({
-      text: String(text).trim(),
+      text: text.trim(),
       targetLanguageCode: targetLanguageCode || 'en-IN',
       speaker,
       pace: typeof pace === 'number' ? pace : 1,
@@ -291,6 +297,7 @@ router.post('/voice/speak', authenticate, logActivity, async (req, res) => {
     });
   } catch (error) {
     logger.error('Voice synthesis error:', error);
+
     res.status(500).json({
       error:
         error instanceof Error

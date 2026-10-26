@@ -1,0 +1,1022 @@
+
+import { useEffect, useState } from "react";
+import { Header } from "@/components/layout/Header";
+import { Sidebar } from "@/components/layout/Sidebar";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { FieldHistoryTimeline } from "@/components/features/FieldHistoryTimeline";
+import { LeafletFieldMap } from "@/components/features/LeafletFieldMap";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import {
+  Map,
+  Layers,
+  Satellite,
+  Navigation,
+  Zap,
+  Droplets,
+  Thermometer,
+  Activity,
+  Plus,
+  Settings,
+  X,
+  LocateFixed,
+  CalendarDays,
+  Save,
+} from "lucide-react";
+import {
+  ndviClassification,
+  ndwiClassification,
+  cropNDVIProfiles,
+} from "@/data/satelliteData";
+import { apiFetch } from "@/lib/api";
+
+type SensorStatus = "optimal" | "warning" | "low" | "high";
+
+type FieldSensor = {
+  type: string;
+  value: number;
+  status: SensorStatus;
+};
+
+type FieldCoordinate = {
+  lat: number;
+  lng: number;
+};
+
+type Field = {
+  id: number;
+  name: string;
+  area: string;
+  crop: string;
+  coordinates: FieldCoordinate[];
+  sensors: FieldSensor[];
+  health: number;
+  lastUpdated: string;
+};
+
+const mockFields: Field[] = [
+  {
+    id: 1,
+    name: "Field A",
+    area: "12.5 hectares",
+    crop: "Winter Wheat",
+    coordinates: [
+      { lat: 40.7128, lng: -74.006 },
+      { lat: 40.713, lng: -74.0058 },
+      { lat: 40.7135, lng: -74.0055 },
+      { lat: 40.7133, lng: -74.0062 },
+    ],
+    sensors: [
+      { type: "soil_moisture", value: 42, status: "optimal" },
+      { type: "temperature", value: 24.5, status: "optimal" },
+    ],
+    health: 85,
+    lastUpdated: "2024-09-18T14:30:00Z",
+  },
+  {
+    id: 2,
+    name: "Field B",
+    area: "8.2 hectares",
+    crop: "Corn",
+    coordinates: [
+      { lat: 40.7125, lng: -74.0065 },
+      { lat: 40.7127, lng: -74.0063 },
+      { lat: 40.713, lng: -74.0068 },
+      { lat: 40.7128, lng: -74.007 },
+    ],
+    sensors: [
+      { type: "ph", value: 6.8, status: "warning" },
+      { type: "soil_moisture", value: 28, status: "low" },
+    ],
+    health: 67,
+    lastUpdated: "2024-09-18T13:15:00Z",
+  },
+  {
+    id: 3,
+    name: "Field C",
+    area: "6.8 hectares",
+    crop: "Soybeans",
+    coordinates: [
+      { lat: 40.7135, lng: -74.0055 },
+      { lat: 40.7137, lng: -74.0052 },
+      { lat: 40.714, lng: -74.0058 },
+      { lat: 40.7138, lng: -74.006 },
+    ],
+    sensors: [{ type: "npk", value: 185, status: "optimal" }],
+    health: 92,
+    lastUpdated: "2024-09-18T14:25:00Z",
+  },
+];
+
+const sensorIcons = {
+  soil_moisture: Droplets,
+  temperature: Thermometer,
+  ph: Activity,
+  npk: Zap,
+};
+
+const sensorColors: Record<string, string> = {
+  soil_moisture: "text-water",
+  temperature: "text-harvest",
+  ph: "text-primary",
+  npk: "text-earth",
+};
+
+const statusColors: Record<
+  SensorStatus,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
+  optimal: "default",
+  warning: "secondary",
+  low: "destructive",
+  high: "destructive",
+};
+
+const vegetationColorClasses: Record<string, string> = {
+  "#1565C0": "bg-[#1565C0]",
+  "#8D6E63": "bg-[#8D6E63]",
+  "#F9A825": "bg-[#F9A825]",
+  "#FDD835": "bg-[#FDD835]",
+  "#8BC34A": "bg-[#8BC34A]",
+  "#4CAF50": "bg-[#4CAF50]",
+  "#2E7D32": "bg-[#2E7D32]",
+  "#1B5E20": "bg-[#1B5E20]",
+  "#BF360C": "bg-[#BF360C]",
+  "#F57F17": "bg-[#F57F17]",
+  "#66BB6A": "bg-[#66BB6A]",
+  "#26A69A": "bg-[#26A69A]",
+};
+
+const FieldMap = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedField, setSelectedField] = useState<number | null>(null);
+  const [mapView, setMapView] = useState<"satellite" | "terrain">("satellite");
+  const [fields, setFields] = useState<Field[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [showAddField, setShowAddField] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [showSensorForm, setShowSensorForm] = useState(false);
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [showBoundary, setShowBoundary] = useState(false);
+  const [gpsActive, setGpsActive] = useState(false);
+
+  const [newFieldName, setNewFieldName] = useState("");
+  const [newFieldCrop, setNewFieldCrop] = useState("");
+  const [newFieldArea, setNewFieldArea] = useState("");
+
+  const [sensorType, setSensorType] = useState("soil_moisture");
+  const [sensorValue, setSensorValue] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDescription, setEventDescription] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [gpsPosition, setGpsPosition] = useState<string | null>(null);
+
+  const { user } = useCurrentUser();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchFields = async () => {
+      try {
+        const response = await apiFetch<{ fields: Field[] }>(
+          "/api/farm/fields"
+        );
+
+        if (cancelled) return;
+
+        const loadedFields =
+          Array.isArray(response.fields) && response.fields.length > 0
+            ? response.fields
+            : mockFields;
+
+        setFields(loadedFields);
+        setSelectedField((current) =>
+          current !== null &&
+          loadedFields.some((field) => field.id === current)
+            ? current
+            : loadedFields[0]?.id ?? null
+        );
+      } catch (error) {
+        if (cancelled) return;
+
+        console.warn("Using offline mock fields fallback:", error);
+        setFields(mockFields);
+        setSelectedField((current) => current ?? mockFields[0].id);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchFields();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const activeField =
+    fields.find((field) => field.id === selectedField) ?? null;
+
+  const getHealthColor = (health: number): string => {
+    if (health >= 80) return "text-primary";
+    if (health >= 60) return "text-harvest";
+    return "text-destructive";
+  };
+
+  const getCropProfile = (crop: string) => {
+    const words = crop.toLowerCase().split(" ");
+    return cropNDVIProfiles.find((profile) =>
+      words.some((word) => profile.crop.toLowerCase().includes(word))
+    );
+  };
+
+  const formatDate = (date: string) => {
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return "Date unavailable";
+
+    return parsed.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const handleFieldSelect = (fieldId: number) => {
+    setSelectedField(fieldId);
+    setShowDetails(false);
+    setShowSensorForm(false);
+    setShowEventForm(false);
+    setActionMessage("");
+  };
+
+  const handleAddField = () => {
+    if (!newFieldName.trim() || !newFieldCrop.trim()) {
+      setActionMessage("Enter the field name and crop.");
+      return;
+    }
+
+    const area = Number(newFieldArea);
+    if (!Number.isFinite(area) || area <= 0) {
+      setActionMessage("Enter a valid area greater than zero.");
+      return;
+    }
+
+    const newField: Field = {
+      id: Math.max(0, ...fields.map((field) => field.id)) + 1,
+      name: newFieldName.trim(),
+      crop: newFieldCrop.trim(),
+      area: `${area} hectares`,
+      coordinates: [],
+      sensors: [],
+      health: 0,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    setFields((current) => [...current, newField]);
+    setSelectedField(newField.id);
+    setShowAddField(false);
+    setNewFieldName("");
+    setNewFieldCrop("");
+    setNewFieldArea("");
+    setActionMessage(
+      "Field added for this session. It is not saved to the server yet."
+    );
+  };
+
+  const handleAddSensor = () => {
+    if (!activeField) return;
+
+    const value = Number(sensorValue);
+    if (!sensorValue.trim() || !Number.isFinite(value)) {
+      setActionMessage("Enter a valid sensor reading.");
+      return;
+    }
+
+    const sensor: FieldSensor = {
+      type: sensorType,
+      value,
+      status: "optimal",
+    };
+
+    setFields((current) =>
+      current.map((field) =>
+        field.id === activeField.id
+          ? {
+              ...field,
+              sensors: [...field.sensors, sensor],
+              lastUpdated: new Date().toISOString(),
+            }
+          : field
+      )
+    );
+
+    setShowSensorForm(false);
+    setSensorValue("");
+    setActionMessage("Sensor reading added locally.");
+  };
+
+  const handleLogEvent = () => {
+    if (!eventTitle.trim()) {
+      setActionMessage("Enter an event title.");
+      return;
+    }
+
+    setFields((current) =>
+      current.map((field) =>
+        field.id === selectedField
+          ? { ...field, lastUpdated: new Date().toISOString() }
+          : field
+      )
+    );
+
+    setActionMessage(
+      `Event "${eventTitle.trim()}" recorded for this session.`
+    );
+    setEventTitle("");
+    setEventDescription("");
+    setShowEventForm(false);
+  };
+
+  const handleGPS = () => {
+    if (gpsActive) {
+      setGpsActive(false);
+      setGpsPosition(null);
+      setActionMessage("GPS tracking stopped.");
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setActionMessage("Geolocation is not supported by this browser.");
+      return;
+    }
+
+    setGpsActive(true);
+    setActionMessage("Requesting your location...");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGpsPosition(
+          `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`
+        );
+        setActionMessage("Current location retrieved.");
+      },
+      (error) => {
+        setGpsActive(false);
+        setActionMessage(
+          error.code === error.PERMISSION_DENIED
+            ? "Location permission was denied."
+            : "Unable to retrieve your location."
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header
+        user={user}
+        onMenuClick={() => setSidebarOpen((open) => !open)}
+        notificationCount={3}
+      />
+
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        userRole="farmer"
+      />
+
+      <main className="p-6 md:ml-64">
+        <div className="space-y-6">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-3xl font-bold text-foreground">
+                Field Map
+              </h2>
+              <p className="text-muted-foreground">
+                Interactive field mapping and sensor data visualization
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={mapView === "satellite" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMapView("satellite")}
+              >
+                <Satellite className="mr-1 h-4 w-4" />
+                Satellite
+              </Button>
+
+              <Button
+                variant={mapView === "terrain" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMapView("terrain")}
+              >
+                <Layers className="mr-1 h-4 w-4" />
+                Terrain
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Map settings"
+                onClick={() =>
+                  setActionMessage("Map settings are not configured yet.")
+                }
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <Card className="flex h-[600px] flex-col overflow-hidden">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <Map className="h-5 w-5 text-primary" />
+                    Interactive Field Map
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="relative min-h-0 flex-1 p-0">
+                  {loading ? (
+                    <div className="flex h-full min-h-[480px] items-center justify-center text-sm text-muted-foreground">
+                      Loading fields...
+                    </div>
+                  ) : (
+                    <LeafletFieldMap
+                      fields={fields}
+                      selectedField={selectedField}
+                      mapView={mapView}
+                      onSelectField={handleFieldSelect}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Navigation className="h-5 w-5 text-primary" />
+                    Field Selection
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-3">
+                  {loading && (
+                    <p className="text-sm text-muted-foreground">
+                      Loading fields...
+                    </p>
+                  )}
+
+                  {!loading && fields.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No fields available.
+                    </p>
+                  )}
+
+                  {fields.map((field) => (
+                    <Button
+                      key={field.id}
+                      variant={
+                        selectedField === field.id ? "default" : "outline"
+                      }
+                      className="h-auto w-full justify-start p-3"
+                      onClick={() => handleFieldSelect(field.id)}
+                    >
+                      <div className="text-left">
+                        <div className="font-medium">{field.name}</div>
+                        <div className="text-sm opacity-70">
+                          {field.crop} • {field.area}
+                        </div>
+                      </div>
+                    </Button>
+                  ))}
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setShowAddField((current) => !current);
+                      setActionMessage("");
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    {showAddField ? "Cancel Add Field" : "Add New Field"}
+                  </Button>
+
+                  {showAddField && (
+                    <div className="space-y-3 rounded-lg border p-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold">New Field</h4>
+                        <button
+                          type="button"
+                          aria-label="Close form"
+                          onClick={() => setShowAddField(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <input
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        placeholder="Field name"
+                        value={newFieldName}
+                        onChange={(e) => setNewFieldName(e.target.value)}
+                      />
+
+                      <input
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        placeholder="Crop"
+                        value={newFieldCrop}
+                        onChange={(e) => setNewFieldCrop(e.target.value)}
+                      />
+
+                      <input
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        type="number"
+                        min="0"
+                        placeholder="Area in hectares"
+                        value={newFieldArea}
+                        onChange={(e) => setNewFieldArea(e.target.value)}
+                      />
+
+                      <Button
+                        className="w-full"
+                        onClick={handleAddField}
+                      >
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Field
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {activeField && (
+                <Card key={activeField.id}>
+                  <CardHeader>
+                    <CardTitle>{activeField.name} Details</CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Selected Field ID: {activeField.id}
+                    </p>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          Crop
+                        </span>
+                        <span className="font-medium">
+                          {activeField.crop}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          Area
+                        </span>
+                        <span className="font-medium">
+                          {activeField.area}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          Health Score
+                        </span>
+                        <span
+                          className={`font-medium ${getHealthColor(activeField.health)}`}
+                        >
+                          {activeField.health}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Active Sensors</h4>
+
+                      {activeField.sensors.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          No sensors added.
+                        </p>
+                      )}
+
+                      {activeField.sensors.map((sensor, index) => {
+                        const sensorType =
+                          sensor.type as keyof typeof sensorIcons;
+                        const SensorIcon = sensorIcons[sensorType];
+
+                        return (
+                          <div
+                            key={`${activeField.id}-${sensor.type}-${index}`}
+                            className="flex items-center justify-between gap-2 rounded-lg border p-2"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              {SensorIcon && (
+                                <SensorIcon
+                                  className={`h-4 w-4 shrink-0 ${sensorColors[sensorType] ?? ""}`}
+                                />
+                              )}
+                              <span className="text-sm capitalize">
+                                {sensor.type.replace(/_/g, " ")}
+                              </span>
+                            </div>
+
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className="text-sm font-medium">
+                                {sensor.value}
+                              </span>
+                              <Badge
+                                variant={
+                                  statusColors[sensor.status] ?? "secondary"
+                                }
+                                className="text-xs"
+                              >
+                                {sensor.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="text-xs text-muted-foreground">
+                      <CalendarDays className="mr-1 inline h-3 w-3" />
+                      Last updated: {formatDate(activeField.lastUpdated)}
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setShowDetails((current) => !current)}
+                      >
+                        {showDetails ? "Hide Details" : "View Details"}
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label="Field settings"
+                        onClick={() =>
+                          setActionMessage(
+                            "Field settings are not connected yet."
+                          )
+                        }
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {showDetails && (
+                      <div className="space-y-1 rounded-lg border p-3 text-sm">
+                        <p><strong>Field:</strong> {activeField.name}</p>
+                        <p><strong>Crop:</strong> {activeField.crop}</p>
+                        <p><strong>Area:</strong> {activeField.area}</p>
+                        <p><strong>Health:</strong> {activeField.health}%</p>
+                        <p>
+                          <strong>Sensor count:</strong>{" "}
+                          {activeField.sensors.length}
+                        </p>
+                        <p>
+                          <strong>Last updated:</strong>{" "}
+                          {formatDate(activeField.lastUpdated)}
+                        </p>
+                        <p>
+                          <strong>Boundary points:</strong>{" "}
+                          {activeField.coordinates.length}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Quick Actions</CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-2">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    disabled={!activeField}
+                    onClick={() => {
+                      setShowSensorForm((current) => !current);
+                      setShowEventForm(false);
+                      setActionMessage("");
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Sensor
+                  </Button>
+
+                  {showSensorForm && activeField && (
+                    <div className="space-y-2 rounded-lg border p-3">
+                      <h4 className="font-medium">Add Sensor Reading</h4>
+                      <select
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        value={sensorType}
+                        onChange={(e) => setSensorType(e.target.value)}
+                      >
+                        <option value="soil_moisture">Soil Moisture</option>
+                        <option value="temperature">Temperature</option>
+                        <option value="ph">pH</option>
+                        <option value="npk">NPK</option>
+                      </select>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        placeholder="Reading"
+                        value={sensorValue}
+                        onChange={(e) => setSensorValue(e.target.value)}
+                      />
+                      <Button className="w-full" onClick={handleAddSensor}>
+                        Save Sensor
+                      </Button>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    disabled={!activeField}
+                    onClick={() => {
+                      setShowBoundary((current) => !current);
+                      setActionMessage("");
+                    }}
+                  >
+                    <Layers className="mr-2 h-4 w-4" />
+                    {showBoundary ? "Hide Boundaries" : "Field Boundaries"}
+                  </Button>
+
+                  {showBoundary && activeField && (
+                    <div className="rounded-lg border p-3 text-sm">
+                      <p className="font-medium">{activeField.name}</p>
+                      <p className="text-muted-foreground">
+                        {activeField.coordinates.length > 0
+                          ? `${activeField.coordinates.length} boundary points available.`
+                          : "No boundary coordinates are available for this field."}
+                      </p>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    disabled={!activeField}
+                    onClick={handleGPS}
+                  >
+                    <LocateFixed className="mr-2 h-4 w-4" />
+                    {gpsActive ? "Stop GPS Tracking" : "GPS Tracking"}
+                  </Button>
+
+                  {gpsPosition && (
+                    <div className="rounded-lg border p-3 text-sm">
+                      <p className="font-medium">Current GPS Position</p>
+                      <p>{gpsPosition}</p>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    disabled={!activeField}
+                    onClick={() => {
+                      setShowEventForm((current) => !current);
+                      setShowSensorForm(false);
+                      setActionMessage("");
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Log New Event
+                  </Button>
+
+                  {showEventForm && activeField && (
+                    <div className="space-y-2 rounded-lg border p-3">
+                      <h4 className="font-medium">Log New Event</h4>
+                      <input
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        placeholder="Event title"
+                        value={eventTitle}
+                        onChange={(e) => setEventTitle(e.target.value)}
+                      />
+                      <textarea
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        placeholder="Event description (optional)"
+                        rows={3}
+                        value={eventDescription}
+                        onChange={(e) =>
+                          setEventDescription(e.target.value)
+                        }
+                      />
+                      <Button className="w-full" onClick={handleLogEvent}>
+                        Save Event
+                      </Button>
+                    </div>
+                  )}
+
+                  {actionMessage && (
+                    <div className="rounded-md bg-muted p-2 text-sm">
+                      {actionMessage}
+                      <button
+                        className="ml-2 underline"
+                        onClick={() => setActionMessage("")}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Satellite className="h-5 w-5 text-primary" />
+                  NDVI Classification Reference
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Normalized Difference Vegetation Index — ISRO/Bhuvan ·
+                  Sentinel-2 · MODIS standards
+                </p>
+              </CardHeader>
+
+              <CardContent className="space-y-1">
+                {ndviClassification.map((range, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 py-1"
+                  >
+                    <div
+                      className={`h-3 w-3 shrink-0 rounded-sm ${
+                        vegetationColorClasses[range.color] ?? "bg-muted"
+                      }`}
+                    />
+                    <span className="w-24 shrink-0 font-mono text-xs">
+                      {range.min.toFixed(2)} – {range.max.toFixed(2)}
+                    </span>
+                    <span className="w-36 shrink-0 text-xs font-medium">
+                      {range.category}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {range.cropCondition}
+                    </span>
+                  </div>
+                ))}
+
+                <div className="mt-3 border-t pt-3">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    NDWI Water Stress Levels:
+                  </p>
+                  {ndwiClassification.map((range, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-3 py-0.5"
+                    >
+                      <div
+                        className={`h-3 w-3 shrink-0 rounded-sm ${
+                          vegetationColorClasses[range.color] ?? "bg-muted"
+                        }`}
+                      />
+                      <span className="w-24 shrink-0 font-mono text-xs">
+                        {range.min.toFixed(2)} – {range.max.toFixed(2)}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {range.cropCondition}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  Crop NDVI Stage Profile
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {activeField
+                    ? `${activeField.crop} — expected NDVI range per growth stage`
+                    : "Select a field above to view crop-specific NDVI thresholds"}
+                </p>
+              </CardHeader>
+
+              <CardContent>
+                {activeField ? (
+                  (() => {
+                    const profile = getCropProfile(activeField.crop);
+
+                    if (!profile) {
+                      return (
+                        <p className="py-4 text-center text-sm text-muted-foreground">
+                          No NDVI profile for "{activeField.crop}".
+                          <br />
+                          Available: Rice, Wheat, Cotton, Maize,
+                          Soybean, Sugarcane, Potato.
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="py-1.5 text-left font-semibold">
+                                Stage
+                              </th>
+                              <th className="py-1.5 text-left font-semibold">
+                                DAS
+                              </th>
+                              <th className="py-1.5 text-center font-semibold">
+                                Min
+                              </th>
+                              <th className="py-1.5 text-center font-semibold text-green-700">
+                                Optimal
+                              </th>
+                              <th className="py-1.5 text-center font-semibold">
+                                Max
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {profile.stages.map((stage, index) => (
+                              <tr
+                                key={index}
+                                className="border-b border-muted/50 hover:bg-muted/30"
+                              >
+                                <td className="py-1.5 pr-2 font-medium">
+                                  {stage.name.split("(")[0].trim()}
+                                </td>
+                                <td className="py-1.5 text-muted-foreground">
+                                  {stage.das}
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  {stage.ndvi.min.toFixed(2)}
+                                </td>
+                                <td className="py-1.5 text-center font-bold text-green-700">
+                                  {stage.ndvi.optimal.toFixed(2)}
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  {stage.ndvi.max.toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Source: NRSC Bhuvan crop monitoring · FAO ASIS ·
+                          ICAR remote sensing studies
+                        </p>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="flex h-40 flex-col items-center justify-center text-muted-foreground">
+                    <Satellite className="mb-3 h-10 w-10 opacity-30" />
+                    <p className="text-sm">
+                      Select a field to view NDVI profile
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <FieldHistoryTimeline
+            fields={fields.map((field) => ({
+              id: field.id,
+              name: field.name,
+              crop: field.crop,
+              area: field.area,
+              health: field.health,
+            }))}
+            selectedField={selectedField}
+          />
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default FieldMap;
