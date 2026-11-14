@@ -620,7 +620,7 @@ const AdminUsers = () => {
 
                   <div>
                     <p className="text-2xl font-bold tabular-nums">
-                      {loading ? "…" : stat.count}
+                      {stat.count}
                     </p>
 
                     <p className="text-xs text-muted-foreground">
@@ -684,7 +684,7 @@ const AdminUsers = () => {
           <Card>
             <CardHeader>
               <CardTitle>
-                All Users ({loading ? "…" : filteredUsers.length})
+                All Users ({filteredUsers.length})
               </CardTitle>
 
               <CardDescription>
