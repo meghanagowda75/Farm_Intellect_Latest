@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import {
   Card,
@@ -24,8 +25,8 @@ import {
   Tooltip,
 } from "recharts";
 import {
-  nationalCropStats,
-  cropProductionMetadata,
+  nationalCropProduction2025_26,
+  currentCropProductionMetadata,
 } from "@/data/cropProduction";
 import {
   mandiPrices,
@@ -442,13 +443,18 @@ export const EnhancedAnalytics = () => {
     };
   }, []);
 
-  const productionChartData = nationalCropStats
-    .slice(0, 8)
-    .map((item) => ({
-      crop: item.crop.split(" ")[0],
+  // Official national production figures:
+  // Third Advance Estimates for 2025-26.
+  // Values are expressed in million tonnes (Mt).
+  const productionChartData = nationalCropProduction2025_26.map(
+    (item) => ({
+      crop: item.crop,
       production: item.production,
-    }));
+    })
+  );
 
+  // Mandi modal prices are historical dataset averages.
+  // They are not live market quotations.
   const mandiPriceChart = mandiPrices
     .slice(0, 8)
     .map((item) => ({
@@ -604,8 +610,9 @@ export const EnhancedAnalytics = () => {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
             <BarChart3 className="h-5 w-5 shrink-0" />
+
             <span>
-              Indian Crop Production 2023–24 (Mt)
+              Indian Crop Production 2025–26
             </span>
 
             <Badge
@@ -614,7 +621,7 @@ export const EnhancedAnalytics = () => {
             >
               Updated{" "}
               {formatUpdatedAt(
-                cropProductionMetadata.lastUpdated
+                currentCropProductionMetadata.lastUpdated
               )}
             </Badge>
           </CardTitle>
@@ -622,8 +629,9 @@ export const EnhancedAnalytics = () => {
 
         <CardContent>
           <p className="mb-3 text-sm text-muted-foreground">
-            Historical national production data in million
-            tonnes.
+            Official national production estimates in million
+            tonnes (Mt), from the Third Advance Estimates.
+            Figures are provisional.
           </p>
 
           <div className="w-full overflow-x-auto">
@@ -644,7 +652,7 @@ export const EnhancedAnalytics = () => {
 
               <Tooltip
                 formatter={(value: number) => [
-                  `${value} Mt`,
+                  `${value.toLocaleString("en-IN")} Mt`,
                   "Production",
                 ]}
               />
@@ -664,15 +672,16 @@ export const EnhancedAnalytics = () => {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
             <TrendingUp className="h-5 w-5 shrink-0" />
+
             <span>
-              Mandi vs MSP 2024–25 (₹/quintal)
+              Historical Mandi vs MSP Reference (₹/quintal)
             </span>
 
             <Badge
               variant="outline"
               className="sm:ml-auto"
             >
-              Updated{" "}
+              Dataset updated{" "}
               {formatUpdatedAt(
                 mandiPricesMetadata.lastUpdated
               )}
@@ -684,6 +693,8 @@ export const EnhancedAnalytics = () => {
           <p className="mb-3 text-sm text-muted-foreground">
             Historical reference only. Mandi modal prices
             are dataset averages, not live market quotations.
+            MSP values in this chart are from the existing
+            mandi dataset and will be updated separately.
           </p>
 
           <div className="w-full overflow-x-auto">
@@ -717,7 +728,7 @@ export const EnhancedAnalytics = () => {
               <Bar
                 dataKey="msp"
                 fill="hsl(24, 95%, 48%)"
-                name="MSP"
+                name="MSP in existing dataset"
                 radius={[4, 4, 0, 0]}
               />
 
@@ -753,12 +764,14 @@ export const EnhancedAnalytics = () => {
       <Card className="tricolor-card">
         <CardHeader>
           <CardTitle>
-            MSP 2024–25 Historical Reference
+            MSP Values in Existing Dataset
           </CardTitle>
 
           <p className="text-sm text-muted-foreground">
-            Minimum Support Price figures from the existing
-            historical dataset, in rupees per quintal.
+            Minimum Support Price figures currently stored
+            in the mandi dataset, in rupees per quintal.
+            These values are not yet presented as the latest
+            official MSP rates.
           </p>
         </CardHeader>
 

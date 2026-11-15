@@ -2,6 +2,7 @@
 // Historical snapshot: December 2024
 // Sources referenced by the project: AGMARKNET, eNAM, APMC market data.
 // Historical values below are not live quotations.
+// MSP values are separate official reference rates for the specified seasons.
 
 import { createDatasetMetadata } from "./datasetMetadata";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,6 +36,7 @@ export interface MandiPrice {
   category: MandiCategory;
   unit: string;
   mspPrice: number | null;
+  mspSeason?: "Kharif 2026-27" | "Rabi 2027-28";
   marketPrices: MarketEntry[];
 }
 
@@ -58,11 +60,11 @@ export interface LiveMarketPrice {
 }
 
 export const mandiPricesMetadata = createDatasetMetadata({
-  version: "1.0.0",
+  version: "1.1.0",
   lastUpdated: "2024-12-01T00:00:00Z",
   source: "AGMARKNET, eNAM, APMC market data",
   notes:
-    "Historical snapshot of representative mandi prices for 2024. Values must not be treated as current market quotations.",
+    "Historical mandi price snapshot of December 2024. Market prices and trends are historical and must not be treated as current quotations. MSP values are separate official reference rates labelled by their marketing season.",
 });
 
 const entry = (
@@ -92,7 +94,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Lokwan / Sharbati / PBW 343",
     category: "cereal",
     unit: "₹/quintal",
-    mspPrice: 2275,
+    mspPrice: 2610,
+    mspSeason: "Rabi 2027-28",
     marketPrices: [
       entry("Azadpur", "New Delhi", "Delhi", 2250, 2800, 2450, 850),
       entry("Khanna", "Ludhiana", "Punjab", 2275, 2650, 2400, 2500),
@@ -108,10 +111,11 @@ export const mandiPrices: MandiPrice[] = [
     id: "rice_mp",
     commodity: "Rice (Paddy)",
     hindiName: "धान",
-    variety: "Common / Grade-A / Basmati",
+    variety: "Common / Grade-A paddy (Basmati excluded)",
     category: "cereal",
     unit: "₹/quintal",
-    mspPrice: 2300,
+    mspPrice: 2441,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Karnal", "Karnal", "Haryana", 2100, 3800, 2500, 4500),
       entry("Khanna", "Ludhiana", "Punjab", 2300, 3200, 2600, 5200),
@@ -128,7 +132,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Yellow / White / Hybrid",
     category: "cereal",
     unit: "₹/quintal",
-    mspPrice: 2090,
+    mspPrice: 2410,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Davangere", "Davangere", "Karnataka", 1900, 2400, 2100, 3500),
       entry("Gulbarga", "Kalaburagi", "Karnataka", 1850, 2350, 2050, 2800),
@@ -144,7 +149,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Desi / Kabuli",
     category: "pulse",
     unit: "₹/quintal",
-    mspPrice: 5440,
+    mspPrice: 5958,
+    mspSeason: "Rabi 2027-28",
     marketPrices: [
       entry("Indore", "Indore", "Madhya Pradesh", 5200, 6800, 5800, 4200),
       entry("Latur", "Latur", "Maharashtra", 5100, 6500, 5600, 3800),
@@ -161,7 +167,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Bold / Small",
     category: "pulse",
     unit: "₹/quintal",
-    mspPrice: 8558,
+    mspPrice: 8780,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Jodhpur", "Jodhpur", "Rajasthan", 7500, 10500, 8800, 1500),
       entry("Nagaur", "Nagaur", "Rajasthan", 7200, 10000, 8500, 1200),
@@ -176,7 +183,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "FAQ / Medium",
     category: "pulse",
     unit: "₹/quintal",
-    mspPrice: 7000,
+    mspPrice: 8450,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Latur", "Latur", "Maharashtra", 8500, 12000, 9800, 3500),
       entry("Gulbarga", "Kalaburagi", "Karnataka", 8200, 11500, 9500, 2800),
@@ -192,7 +200,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Bold / Small / Munger",
     category: "pulse",
     unit: "₹/quintal",
-    mspPrice: 6950,
+    mspPrice: 8200,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Indore", "Indore", "Madhya Pradesh", 6500, 9500, 7800, 1200),
       entry("Nagpur", "Nagpur", "Maharashtra", 6200, 9000, 7500, 900),
@@ -207,7 +216,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Bold / Small Red",
     category: "pulse",
     unit: "₹/quintal",
-    mspPrice: 6425,
+    mspPrice: 7390,
+    mspSeason: "Rabi 2027-28",
     marketPrices: [
       entry("Indore", "Indore", "Madhya Pradesh", 5800, 7500, 6500, 1500),
       entry("Rewa", "Rewa", "Madhya Pradesh", 5500, 7200, 6200, 800),
@@ -221,7 +231,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Bold / Small / Lahi",
     category: "oilseed",
     unit: "₹/quintal",
-    mspPrice: 5650,
+    mspPrice: 6613,
+    mspSeason: "Rabi 2027-28",
     marketPrices: [
       entry("Jaipur", "Jaipur", "Rajasthan", 5200, 6800, 5900, 3500),
       entry("Alwar", "Alwar", "Rajasthan", 5100, 6500, 5800, 2800),
@@ -237,7 +248,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Yellow",
     category: "oilseed",
     unit: "₹/quintal",
-    mspPrice: 4600,
+    mspPrice: 5708,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Indore", "Indore", "Madhya Pradesh", 4200, 5500, 4800, 8500),
       entry("Ujjain", "Ujjain", "Madhya Pradesh", 4100, 5300, 4700, 5200),
@@ -253,7 +265,8 @@ export const mandiPrices: MandiPrice[] = [
     variety: "Bold / Java / TG 51",
     category: "oilseed",
     unit: "₹/quintal",
-    mspPrice: 6377,
+    mspPrice: 7517,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Rajkot", "Rajkot", "Gujarat", 5500, 8500, 6800, 5500),
       entry("Gondal", "Rajkot", "Gujarat", 5800, 9000, 7200, 4200),
@@ -359,10 +372,11 @@ export const mandiPrices: MandiPrice[] = [
     id: "cotton_mp",
     commodity: "Cotton",
     hindiName: "कपास",
-    variety: "DCH-32 / Bunny / Long Staple",
+    variety: "Medium staple (MSP) / Long staple",
     category: "fiber",
     unit: "₹/quintal",
-    mspPrice: 6620,
+    mspPrice: 8267,
+    mspSeason: "Kharif 2026-27",
     marketPrices: [
       entry("Rajkot", "Rajkot", "Gujarat", 6200, 7800, 7000, 8500),
       entry("Amreli", "Amreli", "Gujarat", 6000, 7500, 6800, 5200),
@@ -662,7 +676,11 @@ export async function fetchLiveMandiPrices(
   }
 
   const historicalPrices = getMandiPricesByState(state)
-    .filter((price) => !district || price.district.toLowerCase() === district.toLowerCase())
+    .filter(
+      (price) =>
+        !district ||
+        price.district.toLowerCase() === district.toLowerCase()
+    )
     .map((item) => {
       const parent = mandiPrices.find((commodity) =>
         commodity.marketPrices.some(

@@ -43,6 +43,35 @@ export const cropProductionMetadata = createDatasetMetadata({
   notes: "National production statistics aligned with 2023-24 DES releases.",
 });
 
+// Latest national crop production statistics
+// Source: Ministry of Agriculture and Farmers Welfare
+// Third Advance Estimates for 2025-26
+// Production values are in million tonnes (Mt).
+
+export const currentCropProductionMetadata = createDatasetMetadata({
+  version: "2.0.0",
+  lastUpdated: "2026-05-27T00:00:00Z",
+  source:
+    "Ministry of Agriculture and Farmers Welfare, Third Advance Estimates 2025-26",
+  notes:
+    "Official Third Advance Estimates for 2025-26. Figures are provisional and expressed in million tonnes.",
+});
+
+export interface CurrentNationalCropProduction {
+  crop: string;
+  production: number;
+}
+
+export const nationalCropProduction2025_26: CurrentNationalCropProduction[] = [
+  { crop: "Rice", production: 154.024 },
+  { crop: "Wheat", production: 120.657 },
+  { crop: "Maize", production: 55.093 },
+  { crop: "Nutri-cereals", production: 17.584 },
+  { crop: "Gram", production: 12.514 },
+  { crop: "Tur", production: 3.592 },
+  { crop: "Lentil", production: 1.762 },
+];
+
 // National-level crop production statistics (2023-24 data from DES)
 export const nationalCropStats: NationalCropStats[] = [
   {
