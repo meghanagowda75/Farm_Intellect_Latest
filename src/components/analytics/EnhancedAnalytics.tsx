@@ -692,9 +692,10 @@ export const EnhancedAnalytics = () => {
         <CardContent>
           <p className="mb-3 text-sm text-muted-foreground">
             Historical reference only. Mandi modal prices
-            are dataset averages, not live market quotations.
-            MSP values in this chart are from the existing
-            mandi dataset and will be updated separately.
+            are December 2024 dataset averages, not live
+            market quotations. MSP values reflect the
+            updated reference rates for Kharif 2026–27
+            and Rabi 2027–28.
           </p>
 
           <div className="w-full overflow-x-auto">
@@ -728,7 +729,7 @@ export const EnhancedAnalytics = () => {
               <Bar
                 dataKey="msp"
                 fill="hsl(24, 95%, 48%)"
-                name="MSP in existing dataset"
+                name="Updated MSP reference rate"
                 radius={[4, 4, 0, 0]}
               />
 
@@ -764,14 +765,15 @@ export const EnhancedAnalytics = () => {
       <Card className="tricolor-card">
         <CardHeader>
           <CardTitle>
-            MSP Values in Existing Dataset
+            Updated Minimum Support Prices (MSP)
           </CardTitle>
 
           <p className="text-sm text-muted-foreground">
-            Minimum Support Price figures currently stored
-            in the mandi dataset, in rupees per quintal.
-            These values are not yet presented as the latest
-            official MSP rates.
+            Updated Minimum Support Price reference rates
+            for Kharif 2026–27 and Rabi 2027–28, in rupees
+            per quintal. Rates are season-specific and
+            should be interpreted according to the
+            applicable crop and grade.
           </p>
         </CardHeader>
 
