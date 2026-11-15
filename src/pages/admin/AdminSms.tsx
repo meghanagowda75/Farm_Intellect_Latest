@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { MessageSquare, Search, Send, Users, CheckCircle2, XCircle, Upload, CalendarClock, IndianRupee } from "lucide-react";
 
@@ -135,6 +136,8 @@ const parseCsvLine = (line: string): string[] => {
 
 const AdminSms = () => {
   const { user } = useCurrentUser();
+  const { session, loading: authLoading } = useAuth();
+  const isDemoAdmin = session?.access_token === "mock-token" && user.role === "admin";
   const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -167,6 +170,34 @@ const AdminSms = () => {
   const load = async () => {
     setLoading(true);
     try {
+      if (isDemoAdmin) {
+        setSubs([{
+          id: "demo-sub-1",
+          name: "Demo Farmer",
+          phone: "+910000000001",
+          state: "Karnataka",
+          district: "Demo District",
+          village: "Demo Village",
+          gram_panchayat: "Demo Panchayat",
+          crop: "Ragi",
+          language: "Kannada",
+          source: "Demo",
+          active: true,
+          plan_tier: "Free",
+          plan_status: "Active",
+          monthly_sms_quota: 100,
+          sms_sent_this_month: 12,
+          created_at: new Date().toISOString(),
+        }]);
+        setLogs([]);
+        setSchedules([]);
+        setTemplates([]);
+        setBillingAccounts([]);
+        setPayments([]);
+        setOptOutEvents([]);
+        return;
+      }
+
       const data = await apiFetch<{
         subscribers: Subscriber[];
         logs: LogRow[];
@@ -190,6 +221,8 @@ const AdminSms = () => {
   };
 
   useEffect(() => {
+    if (authLoading) return;
+
     void load().catch((error: unknown) => {
       toast({
         title: "Could not load admin SMS data",
@@ -198,9 +231,13 @@ const AdminSms = () => {
       });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading, isDemoAdmin]);
 
   const sendBatch = async (kind: SmsKind, retryFailed = false) => {
+    if (isDemoAdmin) {
+      toast({ title: "Demo mode", description: "SMS dispatch is disabled in Demo Admin." });
+      return;
+    }
     setSending(true);
     try {
       const data = await apiFetch<{
@@ -246,6 +283,10 @@ const AdminSms = () => {
   const failedRows = logs.filter((row) => row.status === "failed" || row.status === "retry_pending");
 
   const handleBulkRegister = async () => {
+    if (isDemoAdmin) {
+      toast({ title: "Demo mode", description: "Bulk registration is disabled in Demo Admin." });
+      return;
+    }
     if (!bulkCsv.trim()) {
       toast({ title: "Paste CSV rows first", variant: "destructive" });
       return;
@@ -352,6 +393,10 @@ const AdminSms = () => {
   };
 
   const addSchedule = async () => {
+    if (isDemoAdmin) {
+      toast({ title: "Demo mode", description: "Schedule creation is disabled in Demo Admin." });
+      return;
+    }
     try {
       await apiFetch("/api/sms/admin/schedules", {
         method: "POST",
@@ -373,6 +418,10 @@ const AdminSms = () => {
   };
 
   const saveTemplate = async () => {
+    if (isDemoAdmin) {
+      toast({ title: "Demo mode", description: "Template saving is disabled in Demo Admin." });
+      return;
+    }
     try {
       await apiFetch("/api/sms/admin/templates", {
         method: "POST",
@@ -401,6 +450,13 @@ const AdminSms = () => {
           <Badge variant="outline">Sevak workflows are inside Admin (default)</Badge>
         </div>
 
+        {isDemoAdmin && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+            <strong>DEMO MODE — READ ONLY</strong>
+            <p className="mt-1">You are viewing sample SMS data. Changes and actual SMS dispatch are disabled.</p>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-3">
           <Card><CardContent className="flex items-center gap-3 p-4">
             <Users className="h-8 w-8 text-primary" />
@@ -420,7 +476,7 @@ const AdminSms = () => {
           <CardHeader><CardTitle>Dispatch now</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {(["weather", "market", "crop", "scheme"] as SmsKind[]).map((kind) => (
-              <Button key={kind} disabled={sending} onClick={() => void sendBatch(kind)} variant="outline">
+              <Button key={kind} disabled={sending || isDemoAdmin} onClick={() => void sendBatch(kind)} variant="outline">
                 <Send className="mr-2 h-4 w-4" /> Send {kind}
               </Button>
             ))}
@@ -492,7 +548,7 @@ const AdminSms = () => {
                   className="min-h-48"
                   placeholder={"Ramesh Patil,9876543210,Maharashtra,Nashik,Onion,mr,Devgaon,Devgaon GP,basic\nSita Devi,9123456789,Uttar Pradesh,Varanasi,Wheat,hi,Shivpur,Shivpur GP,free"}
                 />
-                <Button onClick={() => void handleBulkRegister()}><Upload className="mr-2 h-4 w-4" /> Process bulk rows</Button>
+                <Button disabled={isDemoAdmin} onClick={() => void handleBulkRegister()}><Upload className="mr-2 h-4 w-4" /> Process bulk rows</Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -520,7 +576,7 @@ const AdminSms = () => {
                   </div>
                   <div className="space-y-1"><Label>Time</Label><Input type="time" value={newSchedule.send_time} onChange={(e) => setNewSchedule((s) => ({ ...s, send_time: e.target.value }))} /></div>
                 </div>
-                <Button onClick={() => void addSchedule()}><CalendarClock className="mr-2 h-4 w-4" /> Add schedule</Button>
+                <Button disabled={isDemoAdmin} onClick={() => void addSchedule()}><CalendarClock className="mr-2 h-4 w-4" /> Add schedule</Button>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] text-sm">
                     <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-2">Name</th><th>Kind</th><th>Template</th><th>Day</th><th>Time</th><th>Status</th></tr></thead>
@@ -550,7 +606,7 @@ const AdminSms = () => {
                   <div className="space-y-1"><Label>Key</Label><Input value={newTemplate.key} onChange={(e) => setNewTemplate((s) => ({ ...s, key: e.target.value }))} /></div>
                   <div className="space-y-1"><Label>Language</Label><Input value={newTemplate.language} onChange={(e) => setNewTemplate((s) => ({ ...s, language: e.target.value }))} /></div>
                   <div className="space-y-1"><Label>DLT template ID</Label><Input value={newTemplate.dlt_template_id} onChange={(e) => setNewTemplate((s) => ({ ...s, dlt_template_id: e.target.value }))} /></div>
-                  <div className="space-y-1 flex items-end"><Button className="w-full" onClick={() => void saveTemplate()}>Save template</Button></div>
+                  <div className="space-y-1 flex items-end"><Button className="w-full" disabled={isDemoAdmin} onClick={() => void saveTemplate()}>Save template</Button></div>
                 </div>
                 <Textarea value={newTemplate.body} onChange={(e) => setNewTemplate((s) => ({ ...s, body: e.target.value }))} placeholder="Keep under 160 characters" />
                 <div className="overflow-x-auto">
@@ -607,7 +663,7 @@ const AdminSms = () => {
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   {(["weather", "market", "crop", "scheme"] as SmsKind[]).map((kind) => (
-                    <Button key={kind} variant="outline" disabled={sending} onClick={() => void sendBatch(kind, true)}>Retry {kind} failures</Button>
+                    <Button key={kind} variant="outline" disabled={sending || isDemoAdmin} onClick={() => void sendBatch(kind, true)}>Retry {kind} failures</Button>
                   ))}
                 </div>
                 <div className="overflow-x-auto">
