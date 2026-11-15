@@ -32,12 +32,79 @@ interface AuditLog {
   };
 }
 
+const SAMPLE_AUDIT_LOGS: AuditLog[] = [
+  {
+    id: "sample-1",
+    action: "POST /api/auth/login",
+    description: "Administrator signed in successfully",
+    actionType: "post",
+    createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
+    user: { name: "Tom", email: "admin@farmintellect.com", role: "ADMIN" },
+  },
+  {
+    id: "sample-2",
+    action: "PUT /api/users/profile",
+    description: "Farmer profile information updated",
+    actionType: "put",
+    createdAt: new Date(Date.now() - 25 * 60000).toISOString(),
+    user: { name: "Tom", email: "admin@farmintellect.com", role: "ADMIN" },
+  },
+  {
+    id: "sample-3",
+    action: "POST /api/crops/recommend",
+    description: "Crop recommendation generated",
+    actionType: "post",
+    createdAt: new Date(Date.now() - 55 * 60000).toISOString(),
+    user: { name: "Ramesh Patil", email: "ramesh@example.com", role: "FARMER" },
+  },
+  {
+    id: "sample-4",
+    action: "GET /api/weather/forecast",
+    description: "Weather forecast information accessed",
+    actionType: "get",
+    createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
+    user: { name: "Tom", email: "admin@farmintellect.com", role: "ADMIN" },
+  },
+  {
+    id: "sample-5",
+    action: "POST /api/market/prices",
+    description: "Market price information refreshed",
+    actionType: "post",
+    createdAt: new Date(Date.now() - 3 * 3600000).toISOString(),
+    user: { name: "Ramesh Patil", email: "ramesh@example.com", role: "FARMER" },
+  },
+  {
+    id: "sample-6",
+    action: "PUT /api/schemes/eligibility",
+    description: "Government scheme eligibility checked",
+    actionType: "put",
+    createdAt: new Date(Date.now() - 5 * 3600000).toISOString(),
+    user: { name: "Tom", email: "admin@farmintellect.com", role: "ADMIN" },
+  },
+  {
+    id: "sample-7",
+    action: "POST /api/vision/scan",
+    description: "Crop leaf image submitted for disease analysis",
+    actionType: "post",
+    createdAt: new Date(Date.now() - 8 * 3600000).toISOString(),
+    user: { name: "Ramesh Patil", email: "ramesh@example.com", role: "FARMER" },
+  },
+  {
+    id: "sample-8",
+    action: "DELETE /api/notifications/old",
+    description: "Old notification removed",
+    actionType: "delete",
+    createdAt: new Date(Date.now() - 24 * 3600000).toISOString(),
+    user: { name: "Tom", email: "admin@farmintellect.com", role: "ADMIN" },
+  },
+];
+
 const AdminAuditLog = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useCurrentUser();
   const { session, loading: authLoading } = useAuth();
 
-  const isDemoAdmin =
+  const isSampleAccount =
     session?.access_token === "mock-token" &&
     user?.role?.toLowerCase() === "admin";
 
@@ -48,8 +115,8 @@ const AdminAuditLog = () => {
   const [typeFilter, setTypeFilter] = useState("all");
 
   const fetchLogs = async () => {
-    if (isDemoAdmin) {
-      setLogs([]);
+    if (isSampleAccount) {
+      setLogs(SAMPLE_AUDIT_LOGS);
       setError("");
       setLoading(false);
       return;
@@ -76,7 +143,7 @@ const AdminAuditLog = () => {
   useEffect(() => {
     if (authLoading) return;
     void fetchLogs();
-  }, [authLoading, isDemoAdmin]);
+  }, [authLoading, isSampleAccount]);
 
   const actionTypes = [...new Set(logs.map((log) => log.actionType))];
 
@@ -132,24 +199,14 @@ const AdminAuditLog = () => {
             <Button
               variant="outline"
               onClick={() => void fetchLogs()}
-              disabled={loading || authLoading || isDemoAdmin}
+              disabled={loading || authLoading}
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
           </div>
 
-          {isDemoAdmin && (
-            <Card>
-              <CardContent className="py-4 text-sm text-muted-foreground">
-                Demo Admin is read-only. Real audit records are available
-                only through an authenticated administrator account.
-              </CardContent>
-            </Card>
-          )}
-
-          {!isDemoAdmin && (
-            <div className="flex gap-3">
+          <div className="flex gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -174,8 +231,7 @@ const AdminAuditLog = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          )}
+          </div>
 
           <Card className="tricolor-card">
             <CardHeader>
@@ -245,16 +301,10 @@ const AdminAuditLog = () => {
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
                   <Activity className="h-12 w-12 mx-auto mb-3 opacity-40" />
-                  <p>
-                    {isDemoAdmin
-                      ? "No real audit records are shown in Demo Admin."
-                      : "No audit log entries found."}
+                  <p>No audit log entries found.</p>
+                  <p className="text-xs mt-2">
+                    Recorded activities will appear here.
                   </p>
-                  {!isDemoAdmin && (
-                    <p className="text-xs mt-2">
-                      New recorded activities will appear here.
-                    </p>
-                  )}
                 </div>
               )}
             </CardContent>
