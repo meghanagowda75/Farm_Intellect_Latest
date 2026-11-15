@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { apiFetch } from "@/lib/api";
+import { apiBaseUrl, apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Activity, Radio, Zap, ShieldAlert, Crosshair, ChevronLeft } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -128,9 +128,24 @@ const WarRoom = () => {
 
     const checkBackend = async () => {
       try {
-        const result = await apiFetch<any>("/health");
-        if (active) {
-          setBackendStatus(result?.status === "OK" ? "online" : "offline");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+
+        try {
+          const response = await fetch(`${apiBaseUrl}/health`, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+            signal: controller.signal,
+          });
+
+          const result = response.ok ? await response.json() : null;
+
+          if (active) {
+            setBackendStatus(result?.status === "OK" ? "online" : "offline");
+          }
+        } finally {
+          clearTimeout(timeout);
         }
       } catch {
         if (active) setBackendStatus("offline");
