@@ -454,3 +454,116 @@ enum MessageType {
   USER
   AI_ASSISTANT
 }
+
+// SMS subscriber registry
+model SmsSubscriber {
+  id               String   @id @default(uuid())
+  name             String
+  phone            String   @unique
+  state            String
+  district         String
+  village          String?
+  gramPanchayat    String?
+  crop             String?
+  language         String   @default("hi")
+  source           String   @default("web")
+  farmerType       String   @default("self")
+  consentAt        DateTime
+  active           Boolean  @default(true)
+  planTier         String   @default("free")
+  planStatus       String   @default("active")
+  monthlySmsQuota  Int      @default(30)
+  smsSentThisMonth Int      @default(0)
+  registeredBy     String?
+  sevakId          String?
+  optOutAt         DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  logs SmsLog[]
+
+  @@index([district, state])
+  @@index([active, planStatus])
+  @@map("sms_subscribers")
+}
+
+model SmsLog {
+  id                String   @id @default(uuid())
+  subscriberId      String?
+  templateKey       String
+  kind              String
+  status            String
+  body              String
+  sentAt            DateTime?
+  error             String?
+  providerMessageId String?
+  createdAt         DateTime @default(now())
+
+  subscriber SmsSubscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([subscriberId])
+  @@map("sms_log")
+}
+
+model SmsSchedule {
+  id          String   @id @default(uuid())
+  name        String
+  kind        String
+  templateKey String
+  dayOfWeek   Int
+  sendTime    String
+  active      Boolean  @default(true)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("sms_schedules")
+}
+
+model SmsTemplate {
+  id            String   @id @default(uuid())
+  key           String
+  language      String
+  body          String
+  dltTemplateId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([key, language])
+  @@map("sms_templates")
+}
+
+model BillingAccount {
+  id                 String   @id @default(uuid())
+  accountName        String
+  accountType        String
+  planTier           String
+  billingStatus      String
+  monthlyBudgetPaise Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("billing_accounts")
+}
+
+model PaymentTransaction {
+  id              String   @id @default(uuid())
+  amountPaise     Int
+  status          String
+  paymentProvider String
+  createdAt       DateTime @default(now())
+
+  @@map("payment_transactions")
+}
+
+model SmsOptOutEvent {
+  id        String   @id @default(uuid())
+  phone     String
+  keyword   String
+  source    String
+  createdAt DateTime @default(now())
+
+  @@index([phone, createdAt])
+  @@map("sms_opt_out_events")
+}

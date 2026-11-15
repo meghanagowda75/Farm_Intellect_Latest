@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { hasSupabaseEnv, supabase } from "@/integrations/supabase/client";
+import { apiFetch } from "@/lib/api";
 import { indianStates, getCitiesByState } from "@/data/indianLocations";
 import { languageOptions } from "@/i18n/languages";
 import { ArrowLeft, MessageSquare, PhoneCall, ShieldCheck, Sprout } from "lucide-react";
@@ -26,7 +26,6 @@ const schema = z.object({
   district: z.string().min(1, "Select district"),
   crop: z.string().min(1, "Select crop"),
   language: z.string().min(1),
-  farmerType: z.enum(["self", "sevak_registered"]),
   consent: z.literal(true, { errorMap: () => ({ message: "Consent is required to send SMS" }) }),
 });
 
@@ -41,7 +40,6 @@ const SmsRegister = () => {
     district: "",
     crop: "",
     language: "hi",
-    farmerType: "self" as "self" | "sevak_registered",
     consent: false,
   });
 
@@ -56,43 +54,34 @@ const SmsRegister = () => {
     }
     setSubmitting(true);
 
-    if (!hasSupabaseEnv) {
-      // Mock registration behavior
-      setSubmitting(false);
+    try {
+      await apiFetch("/api/sms/register", {
+        method: "POST",
+        body: JSON.stringify({
+          name: parsed.data.name,
+          phone: parsed.data.phone,
+          state: parsed.data.state,
+          district: parsed.data.district,
+          crop: parsed.data.crop,
+          language: parsed.data.language,
+          consent: parsed.data.consent,
+        }),
+      });
+
       setDone(true);
       toast({
-        title: "✅ Registered (Local Demo Mode)",
-        description: "Local Demo Mode: Subscription registered in simulated local registry.",
+        title: "Registration saved",
+        description: "Your SMS registration has been saved successfully.",
       });
-      return;
+    } catch (error) {
+      toast({
+        title: "Could not register",
+        description: error instanceof Error ? error.message : "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
     }
-
-    const phoneE164 = `+91${parsed.data.phone}`;
-    const { error } = await supabase.from("sms_subscribers").insert({
-      name: parsed.data.name,
-      phone: phoneE164,
-      state: parsed.data.state,
-      district: parsed.data.district,
-      crop: parsed.data.crop,
-      language: parsed.data.language,
-      farmer_type: parsed.data.farmerType,
-      plan_tier: "free",
-      plan_status: "active",
-      source: "web",
-    });
-    setSubmitting(false);
-    if (error) {
-      const msg = error.message.includes("duplicate") || error.code === "23505"
-        ? "This mobile is already registered. You'll keep receiving alerts."
-        : error.message;
-      toast({ title: "Could not register", description: msg, variant: "destructive" });
-      return;
-    }
-    setDone(true);
-    toast({
-      title: "✅ Registered",
-      description: "Free tier is active. For paid upgrades, contact your local Krishi Sevak/Sarpanch or platform support.",
-    });
   };
 
   return (
@@ -124,7 +113,7 @@ const SmsRegister = () => {
                   </div>
                   <h3 className="text-xl font-semibold">You're in! 🎉</h3>
                   <p className="text-sm text-muted-foreground">
-                    Your first SMS will arrive within 24 hours. Reply <strong>STOP</strong> any time to opt out.
+                    Your registration has been saved. SMS alerts will begin once the SMS service is configured. You can contact platform support to withdraw your consent.
                   </p>
                   <Button asChild variant="outline"><Link to="/">Done</Link></Button>
                 </div>
@@ -170,16 +159,6 @@ const SmsRegister = () => {
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Registration type</Label>
-                      <Select value={form.farmerType} onValueChange={(v) => setForm({ ...form, farmerType: v as "self" | "sevak_registered" })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="self">Self registration</SelectItem>
-                          <SelectItem value="sevak_registered">Registered by Sevak/Sarpanch</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
                       <Label>Primary crop</Label>
                       <Select value={form.crop} onValueChange={(v) => setForm({ ...form, crop: v })}>
                         <SelectTrigger><SelectValue placeholder="Select crop" /></SelectTrigger>
@@ -204,8 +183,7 @@ const SmsRegister = () => {
                   <label className="flex items-start gap-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
                     <Checkbox checked={form.consent} onCheckedChange={(v) => setForm({ ...form, consent: !!v })} className="mt-0.5" />
                     <span className="text-muted-foreground">
-                      I agree to receive SMS from Farm Intellect (free tier and future paid plans) about weather, mandi prices, pest alerts and government schemes.
-                      Reply <strong>STOP</strong> to opt out anytime. Standard SMS rates do not apply (we pay for the SMS).
+                      I agree to receive SMS from Farm Intellect about weather, mandi prices, pest alerts and government schemes. I understand that message and data rates may apply, and I can contact platform support to withdraw my consent.
                     </span>
                   </label>
 

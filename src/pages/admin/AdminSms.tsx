@@ -11,8 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { apiFetch } from "@/lib/api";
 import { MessageSquare, Search, Send, Users, CheckCircle2, XCircle, Upload, CalendarClock, IndianRupee } from "lucide-react";
 
 type SmsKind = "weather" | "market" | "crop" | "scheme";
@@ -136,7 +135,6 @@ const parseCsvLine = (line: string): string[] => {
 
 const AdminSms = () => {
   const { user } = useCurrentUser();
-  const { user: authUser } = useAuth();
   const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -168,32 +166,27 @@ const AdminSms = () => {
 
   const load = async () => {
     setLoading(true);
-    const [
-      subsRes,
-      logsRes,
-      schedulesRes,
-      templatesRes,
-      billingRes,
-      paymentsRes,
-      optOutRes,
-    ] = await Promise.all([
-      supabase.from("sms_subscribers").select("*").order("created_at", { ascending: false }).limit(500),
-      supabase.from("sms_log").select("id, subscriber_id, template_key, status, body, sent_at, error").order("created_at", { ascending: false }).limit(200),
-      (supabase as any).from("sms_schedules").select("*").order("day_of_week", { ascending: true }),
-      supabase.from("sms_templates").select("*").order("key", { ascending: true }).limit(200),
-      (supabase as any).from("billing_accounts").select("*").order("created_at", { ascending: false }).limit(200),
-      (supabase as any).from("payment_transactions").select("id, amount_paise, status, payment_provider, created_at").order("created_at", { ascending: false }).limit(200),
-      (supabase as any).from("sms_opt_out_events").select("id, phone, keyword, source, created_at").order("created_at", { ascending: false }).limit(200),
-    ]);
+    try {
+      const data = await apiFetch<{
+        subscribers: Subscriber[];
+        logs: LogRow[];
+        schedules: ScheduleRow[];
+        templates: TemplateRow[];
+        billingAccounts: BillingAccountRow[];
+        payments: PaymentRow[];
+        optOutEvents: OptOutRow[];
+      }>("/api/sms/admin/data");
 
-    setSubs((subsRes.data as unknown as Subscriber[]) ?? []);
-    setLogs((logsRes.data as LogRow[]) ?? []);
-    setSchedules((schedulesRes.data as unknown as ScheduleRow[]) ?? []);
-    setTemplates((templatesRes.data as TemplateRow[]) ?? []);
-    setBillingAccounts((billingRes.data as unknown as BillingAccountRow[]) ?? []);
-    setPayments((paymentsRes.data as unknown as PaymentRow[]) ?? []);
-    setOptOutEvents((optOutRes.data as unknown as OptOutRow[]) ?? []);
-    setLoading(false);
+      setSubs(data.subscribers ?? []);
+      setLogs(data.logs ?? []);
+      setSchedules(data.schedules ?? []);
+      setTemplates(data.templates ?? []);
+      setBillingAccounts(data.billingAccounts ?? []);
+      setPayments(data.payments ?? []);
+      setOptOutEvents(data.optOutEvents ?? []);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -209,19 +202,31 @@ const AdminSms = () => {
 
   const sendBatch = async (kind: SmsKind, retryFailed = false) => {
     setSending(true);
-    const { data, error } = await supabase.functions.invoke("sms-dispatcher", {
-      body: { kind, dryRun: false, limit: 100, retryFailed },
-    });
-    setSending(false);
-    if (error) {
-      toast({ title: "Dispatch failed", description: error.message, variant: "destructive" });
-      return;
+    try {
+      const data = await apiFetch<{
+        sent: number;
+        failed: number;
+        blocked: number;
+        skipped: number;
+      }>("/api/sms/admin/dispatch", {
+        method: "POST",
+        body: JSON.stringify({ kind, limit: 100, retryFailed }),
+      });
+
+      toast({
+        title: retryFailed ? "Retry batch complete" : "Batch dispatched",
+        description: `Sent ${data.sent} • Failed ${data.failed} • Blocked ${data.blocked} • Skipped ${data.skipped}`,
+      });
+      await load();
+    } catch (error) {
+      toast({
+        title: "SMS dispatch unavailable",
+        description: error instanceof Error ? error.message : "Could not dispatch SMS.",
+        variant: "destructive",
+      });
+    } finally {
+      setSending(false);
     }
-    toast({
-      title: retryFailed ? "Retry batch complete" : "Batch dispatched",
-      description: `Sent ${data?.sent ?? 0} • Failed ${data?.failed ?? 0} • Blocked ${data?.blocked ?? 0} • Skipped ${data?.skipped ?? 0}`,
-    });
-    void load();
   };
 
   const filtered = useMemo(
@@ -305,101 +310,84 @@ const AdminSms = () => {
       return;
     }
 
-    const phones = parsedRows.map((row) => row.phone);
-    const { data: existingRows, error: existingError } = await supabase
-      .from("sms_subscribers")
-      .select("id, phone")
-      .in("phone", phones);
-    if (existingError) {
-      toast({ title: "Bulk register failed", description: existingError.message, variant: "destructive" });
+    const consentConfirmed = window.confirm(
+      "Confirm that every farmer in this CSV has personally agreed to receive Farm Intellect SMS alerts."
+    );
+
+    if (!consentConfirmed) {
+      toast({
+        title: "Bulk registration cancelled",
+        description: "Farmer consent must be confirmed before registration.",
+        variant: "destructive",
+      });
       return;
     }
 
-    const existingByPhone = new Map((existingRows ?? []).map((row) => [row.phone, row.id]));
-    const insertRows = parsedRows
-      .filter((row) => !existingByPhone.has(row.phone))
-      .map((row) => ({
-        ...row,
-        source: "sevak_bulk",
-        farmer_type: "sevak_registered",
-        plan_status: "active",
-        registered_by: authUser?.id ?? null,
-        sevak_id: authUser?.id ?? null,
-      }));
-    const updateRows = parsedRows.filter((row) => existingByPhone.has(row.phone));
+    try {
+      const result = await apiFetch<{
+        inserted: number;
+        updated: number;
+        total: number;
+      }>("/api/sms/admin/bulk", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: parsedRows,
+          consentConfirmed: true,
+        }),
+      });
 
-    if (insertRows.length > 0) {
-      const { error: insertError } = await supabase.from("sms_subscribers").insert(insertRows);
-      if (insertError) {
-        toast({ title: "Bulk register failed", description: insertError.message, variant: "destructive" });
-        return;
-      }
+      toast({
+        title: "Field operations updated",
+        description: `Inserted ${result.inserted}, updated ${result.updated} (total ${result.total}).`,
+      });
+      setBulkCsv("");
+      void load();
+    } catch (error) {
+      toast({
+        title: "Bulk registration failed",
+        description: error instanceof Error ? error.message : "Could not register farmers.",
+        variant: "destructive",
+      });
     }
-
-    for (const row of updateRows) {
-      const { error: updateError } = await supabase
-        .from("sms_subscribers")
-        .update({
-          name: row.name,
-          state: row.state,
-          district: row.district,
-          crop: row.crop,
-          language: row.language,
-          village: row.village,
-          gram_panchayat: row.gram_panchayat,
-          source: "sevak_bulk",
-          farmer_type: "sevak_registered",
-          registered_by: authUser?.id ?? null,
-          sevak_id: authUser?.id ?? null,
-        })
-        .eq("phone", row.phone);
-      if (updateError) {
-        toast({ title: "Bulk update failed", description: updateError.message, variant: "destructive" });
-        return;
-      }
-    }
-
-    toast({
-      title: "Field operations updated",
-      description: `Inserted ${insertRows.length}, updated ${updateRows.length} (total ${parsedRows.length}).`,
-    });
-    setBulkCsv("");
-    void load();
   };
 
   const addSchedule = async () => {
-    const { error } = await (supabase as any).from("sms_schedules").insert({
-      name: newSchedule.name,
-      kind: newSchedule.kind,
-      template_key: newSchedule.template_key,
-      day_of_week: Number(newSchedule.day_of_week),
-      send_time: newSchedule.send_time,
-      created_by: authUser?.id ?? null,
-      active: true,
-    });
-    if (error) {
-      toast({ title: "Could not add schedule", description: error.message, variant: "destructive" });
-      return;
+    try {
+      await apiFetch("/api/sms/admin/schedules", {
+        method: "POST",
+        body: JSON.stringify(newSchedule),
+      });
+      toast({
+        title: "Schedule saved",
+        description: "The schedule is stored, but automatic SMS sending is not enabled yet.",
+      });
+      setNewSchedule({ name: "", kind: "weather", template_key: "weather_default", day_of_week: "1", send_time: "06:00" });
+      void load();
+    } catch (error) {
+      toast({
+        title: "Could not add schedule",
+        description: error instanceof Error ? error.message : "Could not save the schedule.",
+        variant: "destructive",
+      });
     }
-    toast({ title: "Schedule added" });
-    setNewSchedule({ name: "", kind: "weather", template_key: "weather_default", day_of_week: "1", send_time: "06:00" });
-    void load();
   };
 
   const saveTemplate = async () => {
-    const { error } = await supabase.from("sms_templates").upsert({
-      key: newTemplate.key.trim(),
-      language: newTemplate.language.trim(),
-      body: newTemplate.body.trim(),
-      dlt_template_id: newTemplate.dlt_template_id.trim() || null,
-    });
-    if (error) {
-      toast({ title: "Template save failed", description: error.message, variant: "destructive" });
-      return;
+    try {
+      await apiFetch("/api/sms/admin/templates", {
+        method: "POST",
+        body: JSON.stringify(newTemplate),
+      });
+      toast({ title: "Template saved" });
+      setNewTemplate((prev) => ({ ...prev, body: "", dlt_template_id: "" }));
+      void load();
+    } catch (error) {
+      toast({
+        title: "Template save failed",
+        description: error instanceof Error ? error.message : "Could not save the template.",
+        variant: "destructive",
+      });
     }
-    toast({ title: "Template saved" });
-    setNewTemplate((prev) => ({ ...prev, body: "", dlt_template_id: "" }));
-    void load();
   };
 
   return (
@@ -457,12 +445,12 @@ const AdminSms = () => {
                   <CardTitle>Subscribers</CardTitle>
                   <div className="relative w-full sm:w-64">
                     <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Name, phone, district…" value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" />
+                    <Input placeholder="Name, phone, districtâ€¦" value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" />
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="overflow-x-auto">
-                {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : filtered.length === 0 ? (
+                {loading ? <p className="text-sm text-muted-foreground">Loadingâ€¦</p> : filtered.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No subscribers yet. Share <code>/sms-register</code>.</p>
                 ) : (
                   <table className="w-full min-w-[980px] text-sm">
@@ -475,8 +463,8 @@ const AdminSms = () => {
                           <td className="py-2">{s.name}</td>
                           <td className="font-mono text-xs">{s.phone}</td>
                           <td>{s.district}, {s.state}</td>
-                          <td className="text-xs">{s.village ?? "—"}{s.gram_panchayat ? ` (${s.gram_panchayat})` : ""}</td>
-                          <td>{s.crop ?? "—"}</td>
+                          <td className="text-xs">{s.village ?? "â€”"}{s.gram_panchayat ? ` (${s.gram_panchayat})` : ""}</td>
+                          <td>{s.crop ?? "â€”"}</td>
                           <td><Badge variant="secondary">{s.plan_tier}</Badge> <span className="text-xs text-muted-foreground">{s.plan_status}</span></td>
                           <td className="text-xs">{s.sms_sent_this_month}/{s.monthly_sms_quota}</td>
                           <td>{s.active ? <Badge>Active</Badge> : <Badge variant="outline">Off</Badge>}</td>
@@ -496,7 +484,7 @@ const AdminSms = () => {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  CSV format per line: <code>name,phone,state,district,crop,language,village,gramPanchayat,planTier</code>
+                  CSV format per line: <code>name,phone,state,district,crop,language,village,gramPanchayat,planTier</code>. You must confirm that every listed farmer has consented when prompted.
                 </p>
                 <Textarea
                   value={bulkCsv}
@@ -573,7 +561,7 @@ const AdminSms = () => {
                         <tr key={t.id} className="border-t border-border align-top">
                           <td className="py-2 text-xs">{t.key}</td>
                           <td><Badge variant="secondary">{t.language}</Badge></td>
-                          <td className="text-xs">{t.dlt_template_id ?? "—"}</td>
+                          <td className="text-xs">{t.dlt_template_id ?? "â€”"}</td>
                           <td className="text-xs text-muted-foreground">{t.body}</td>
                         </tr>
                       ))}
@@ -590,7 +578,7 @@ const AdminSms = () => {
               <CardContent className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Billing accounts</div><div className="text-2xl font-bold">{billingAccounts.length}</div></CardContent></Card>
-                  <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Monthly budget</div><div className="text-2xl font-bold">₹{(totalBudget / 100).toLocaleString("en-IN")}</div></CardContent></Card>
+                  <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Monthly budget</div><div className="text-2xl font-bold">â‚¹{(totalBudget / 100).toLocaleString("en-IN")}</div></CardContent></Card>
                   <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Paid collections</div><div className="text-2xl font-bold flex items-center"><IndianRupee className="h-5 w-5" />{(totalPaid / 100).toLocaleString("en-IN")}</div></CardContent></Card>
                 </div>
                 <div className="overflow-x-auto">
@@ -603,7 +591,7 @@ const AdminSms = () => {
                           <td>{b.account_type}</td>
                           <td><Badge>{b.plan_tier}</Badge></td>
                           <td>{b.billing_status}</td>
-                          <td>₹{(b.monthly_budget_paise / 100).toLocaleString("en-IN")}</td>
+                          <td>â‚¹{(b.monthly_budget_paise / 100).toLocaleString("en-IN")}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -630,8 +618,8 @@ const AdminSms = () => {
                         <tr key={row.id} className="border-t border-border">
                           <td className="py-2 text-xs">{row.template_key}</td>
                           <td><Badge variant="destructive">{row.status}</Badge></td>
-                          <td className="text-xs text-muted-foreground">{row.error ?? "—"}</td>
-                          <td className="text-xs">{row.sent_at ? new Date(row.sent_at).toLocaleString("en-IN") : "—"}</td>
+                          <td className="text-xs text-muted-foreground">{row.error ?? "â€”"}</td>
+                          <td className="text-xs">{row.sent_at ? new Date(row.sent_at).toLocaleString("en-IN") : "â€”"}</td>
                         </tr>
                       ))}
                     </tbody>

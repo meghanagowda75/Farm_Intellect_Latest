@@ -29,6 +29,7 @@ import marketRoutes from './routes/market.js';
 import pollRoutes from './routes/polls.js';
 import datasetRoutes from './routes/datasets.js';
 import weatherRoutes from './routes/weather.js';
+import smsRoutes from './routes/sms.js';
 
 import { scheduleIngestionJobs } from './jobs/ingestion.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -241,6 +242,7 @@ app.use('/api/market', marketRoutes);
 app.use('/api/polls', pollRoutes);
 app.use('/api/datasets', datasetRoutes);
 app.use('/api/weather', weatherRoutes);
+app.use('/api/sms', smsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
