@@ -520,6 +520,13 @@ const AdminUsers = () => {
     [users]
   );
 
+
+  console.log("[AdminUsers render check]", {
+    users: users.length,
+    filteredUsers: filteredUsers.length,
+    roleCounts,
+  });
+
   const getRoleBadge = (role: UserRole) => {
     const styles: Record<UserRole, string> = {
       farmer: "bg-primary/15 text-primary border-primary/30",
@@ -671,9 +678,8 @@ const AdminUsers = () => {
                   disabled={loading}
                 >
                   <RefreshCw
-                    className={`h-4 w-4 mr-2 ${
-                      loading ? "animate-spin" : ""
-                    }`}
+                    className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""
+                      }`}
                   />
                   Refresh
                 </Button>
@@ -743,10 +749,10 @@ const AdminUsers = () => {
                               Joined{" "}
                               {joinedDate
                                 ? joinedDate.toLocaleDateString("en-IN", {
-                                    day: "numeric",
-                                    month: "short",
-                                    year: "numeric",
-                                  })
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                })
                                 : "date unavailable"}
                             </p>
                           </div>
