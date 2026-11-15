@@ -172,16 +172,16 @@ const AdminSms = () => {
     try {
       if (isDemoAdmin) {
         setSubs([{
-          id: "demo-sub-1",
-          name: "Demo Farmer",
-          phone: "+910000000001",
-          state: "Karnataka",
-          district: "Demo District",
-          village: "Demo Village",
-          gram_panchayat: "Demo Panchayat",
+          id: "sample-sub-1",
+          name: "Ramesh Patil",
+          phone: "+919876543210",
+          state: "Maharashtra",
+          district: "Nashik",
+          village: "Devgaon",
+          gram_panchayat: "Devgaon GP",
           crop: "Ragi",
           language: "Kannada",
-          source: "Demo",
+          source: "Sample",
           active: true,
           plan_tier: "Free",
           plan_status: "Active",
@@ -277,7 +277,8 @@ const AdminSms = () => {
     [subs, q],
   );
 
-  const active = subs.filter((s) => s.active).length;
+  const totalSubscribers = isDemoAdmin ? 1 : subs.length;
+  const active = isDemoAdmin ? 1 : subs.filter((s) => s.active).length;
   const totalBudget = billingAccounts.reduce((sum, row) => sum + row.monthly_budget_paise, 0);
   const totalPaid = payments.filter((p) => p.status === "paid").reduce((sum, row) => sum + row.amount_paise, 0);
   const failedRows = logs.filter((row) => row.status === "failed" || row.status === "retry_pending");
@@ -450,17 +451,11 @@ const AdminSms = () => {
           <Badge variant="outline">Sevak workflows are inside Admin (default)</Badge>
         </div>
 
-        {isDemoAdmin && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-            <strong>DEMO MODE — READ ONLY</strong>
-            <p className="mt-1">You are viewing sample SMS data. Changes and actual SMS dispatch are disabled.</p>
-          </div>
-        )}
 
         <div className="grid gap-4 sm:grid-cols-3">
           <Card><CardContent className="flex items-center gap-3 p-4">
             <Users className="h-8 w-8 text-primary" />
-            <div><div className="text-2xl font-bold">{subs.length}</div><div className="text-xs text-muted-foreground">Total subscribers</div></div>
+            <div><div className="text-2xl font-bold">{totalSubscribers}</div><div className="text-xs text-muted-foreground">Total subscribers</div></div>
           </CardContent></Card>
           <Card><CardContent className="flex items-center gap-3 p-4">
             <CheckCircle2 className="h-8 w-8 text-green-600" />
@@ -468,7 +463,7 @@ const AdminSms = () => {
           </CardContent></Card>
           <Card><CardContent className="flex items-center gap-3 p-4">
             <XCircle className="h-8 w-8 text-destructive" />
-            <div><div className="text-2xl font-bold">{subs.length - active}</div><div className="text-xs text-muted-foreground">Inactive / Opted out</div></div>
+            <div><div className="text-2xl font-bold">{totalSubscribers - active}</div><div className="text-xs text-muted-foreground">Inactive / Opted out</div></div>
           </CardContent></Card>
         </div>
 
