@@ -2,7 +2,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Shield, CloudLightning, Activity, Landmark, Users, TrendingUp, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import CountUp from "react-countup";
+import AnimatedNumber from "@/components/AnimatedNumber";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -83,7 +83,7 @@ const CommandCenter = () => {
                 <div className="flex items-baseline gap-1">
                   <h3 className="text-5xl lg:text-6xl font-bold tracking-tighter text-white">
                     {stat.prefix}
-                    <CountUp end={stat.value} duration={2.5} decimals={stat.decimals || 0} separator="," />
+                    <AnimatedNumber end={stat.value} duration={2.5} decimals={stat.decimals || 0} separator="," />
                   </h3>
                   <span className="text-2xl text-zinc-500 font-light">{stat.suffix}</span>
                 </div>

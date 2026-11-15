@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import CountUp from "react-countup";
+import AnimatedNumber from "@/components/AnimatedNumber";
 import { ChevronLeft } from "lucide-react";
 
 const Mission2030 = () => {
@@ -56,7 +56,7 @@ const Mission2030 = () => {
               className="flex flex-col items-center p-6 rounded-2xl bg-white/[0.02] border border-white/5 backdrop-blur-md"
             >
               <div className="text-4xl md:text-6xl font-bold text-white mb-2 tracking-tighter flex items-center">
-                <CountUp end={stat.end} duration={3} delay={0.5} />
+                <AnimatedNumber end={stat.end} duration={3} delay={0.5} />
                 <span>{stat.suffix}</span>
               </div>
               <div className="text-sm md:text-base text-zinc-400 uppercase tracking-widest font-semibold">
