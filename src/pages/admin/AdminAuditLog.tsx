@@ -145,9 +145,13 @@ const AdminAuditLog = () => {
     void fetchLogs();
   }, [authLoading, isSampleAccount]);
 
-  const actionTypes = [...new Set(logs.map((log) => log.actionType))];
+  const displayedLogs = isSampleAccount ? SAMPLE_AUDIT_LOGS : logs;
 
-  const filtered = logs.filter((log) => {
+  const actionTypes = [
+    ...new Set(displayedLogs.map((log) => log.actionType)),
+  ];
+
+  const filtered = displayedLogs.filter((log) => {
     const searchText = search.toLowerCase();
 
     const matchSearch =
