@@ -10,12 +10,22 @@ import { MessageSquare, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const categories = ["Crop Disease", "Soil Health", "Irrigation", "Pest Control", "Fertilizer", "Market Advice", "General"];
+const categories = [
+  ["Crop Disease", "consultation.crop_disease"],
+  ["Soil Health", "consultation.soil_health"],
+  ["Irrigation", "consultation.irrigation"],
+  ["Pest Control", "consultation.pest_control"],
+  ["Fertilizer", "consultation.fertilizer"],
+  ["Market Advice", "consultation.market_advice"],
+  ["General", "consultation.general"],
+] as const;
 const priorities = ["low", "medium", "high"];
 
 export const FarmerConsultationForm = ({ onSubmitted }: { onSubmitted?: () => void }) => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -29,7 +39,7 @@ export const FarmerConsultationForm = ({ onSubmitted }: { onSubmitted?: () => vo
     e.preventDefault();
     if (!user?.id || !title.trim() || !description.trim()) return;
     if (siteKey && !captchaToken) {
-      toast({ title: "Verification required", description: "Please complete the CAPTCHA", variant: "destructive" });
+      toast({ title: t('consultation.verification_required'), description: t('consultation.complete_captcha'), variant: "destructive" });
       return;
     }
 
@@ -44,9 +54,9 @@ export const FarmerConsultationForm = ({ onSubmitted }: { onSubmitted?: () => vo
     });
 
     if (error) {
-      toast({ title: "Failed to submit", description: error.message, variant: "destructive" });
+      toast({ title: t('consultation.failed_submit'), description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Consultation submitted!", description: "An expert will review your request soon." });
+      toast({ title: t('consultation.submitted'), description: t('consultation.expert_review') });
       setTitle("");
       setDescription("");
       setCategory("General");
@@ -62,40 +72,40 @@ export const FarmerConsultationForm = ({ onSubmitted }: { onSubmitted?: () => vo
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5 text-primary" />
-          Ask an Expert
+          {t('consultation.ask_expert')}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="consult-title">Question Title</Label>
-            <Input id="consult-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Yellow spots on wheat leaves" maxLength={200} required />
+            <Label htmlFor="consult-title">{t('consultation.question_title')}</Label>
+            <Input id="consult-title" value={title} onChange={e => setTitle(e.target.value)} placeholder={t("consultation.question_placeholder")} maxLength={200} required />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Category</Label>
+              <Label>{t('consultation.category')}</Label>
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {categories.map(([value, key]) => <SelectItem key={value} value={value}>{t(key)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Priority</Label>
+              <Label>{t('consultation.priority')}</Label>
               <Select value={priority} onValueChange={setPriority}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {priorities.map(p => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}
+                  {priorities.map(p => <SelectItem key={p} value={p} className="capitalize">{t(`consultation.priority_${p}`)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="consult-desc">Describe your issue</Label>
-            <Textarea id="consult-desc" value={description} onChange={e => setDescription(e.target.value)} placeholder="Provide details about your crop issue, soil condition, or any agricultural question…" rows={4} maxLength={2000} required />
+            <Label htmlFor="consult-desc">{t('consultation.describe_issue')}</Label>
+            <Textarea id="consult-desc" value={description} onChange={e => setDescription(e.target.value)} placeholder={t("consultation.details_placeholder")} rows={4} maxLength={2000} required />
           </div>
 
           {/* Turnstile CAPTCHA for bot prevention */}
@@ -106,7 +116,7 @@ export const FarmerConsultationForm = ({ onSubmitted }: { onSubmitted?: () => vo
                 onSuccess={(token) => setCaptchaToken(token)}
                 onError={() => {
                   setCaptchaToken(null);
-                  toast({ title: "CAPTCHA failed", description: "Please try again", variant: "destructive" });
+                  toast({ title: t('consultation.captcha_failed'), description: t('common.try_again'), variant: "destructive" });
                 }}
                 theme="light"
               />
@@ -115,7 +125,7 @@ export const FarmerConsultationForm = ({ onSubmitted }: { onSubmitted?: () => vo
 
           <Button type="submit" disabled={submitting || (Boolean(siteKey) && !captchaToken)} className="w-full">
             <Send className="h-4 w-4 mr-2" />
-            {submitting ? "Submitting…" : "Submit to Expert Queue"}
+            {submitting ? t('common.submitting') : t('consultation.submit_queue')}
           </Button>
         </form>
       </CardContent>

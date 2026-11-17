@@ -82,10 +82,10 @@ export const RoleDashboard = ({ userRole }: RoleDashboardProps) => {
         ];
       default:
         return [
-          { icon: Calendar, label: "🧭 Crop Planner", color: "primary", description: "Build season-wise crop plans", route: "/farmer/calendar" },
-          { icon: Activity, label: "🛰️ Field History", color: "secondary", description: "Track field events", route: "/farmer/field-map" },
-          { icon: Award, label: "🏛️ Scheme Wizard", color: "outline", description: "Match subsidies & credit", route: "/farmer/schemes" },
-          { icon: MessageSquare, label: "🎓 Ask an Expert", color: "outline", description: "Get professional guidance", route: "/farmer/chat" }
+          { icon: Calendar, label: t('dashboard.crop_planner'), color: 'primary', description: t('dashboard.crop_planner_desc'), route: "/farmer/calendar" },
+          { icon: Activity, label: t('dashboard.field_history'), color: 'secondary', description: t('dashboard.field_history_desc'), route: "/farmer/field-map" },
+          { icon: Award, label: t('dashboard.scheme_wizard'), color: 'outline', description: t('dashboard.scheme_wizard_desc'), route: "/farmer/schemes" },
+          { icon: MessageSquare, label: t('dashboard.ask_expert'), color: 'outline', description: t('dashboard.ask_expert_desc'), route: "/farmer/chat" }
         ];
     }
   };
@@ -128,11 +128,11 @@ export const RoleDashboard = ({ userRole }: RoleDashboardProps) => {
         <div className="flex items-center gap-3">
           <AshokaChakra size={28} animate={false} />
           <h1 className="text-3xl font-bold text-gradient-tricolor">
-            {userRole.charAt(0).toUpperCase() + userRole.slice(1)} Dashboard
+            {t(`dashboard.role_${userRole}`)} {t('dashboard.title_suffix')}
           </h1>
         </div>
         <Badge variant="outline" className="text-sm border-primary/30 text-primary">
-          {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+          {t(`dashboard.role_${userRole}`)}
         </Badge>
       </div>
 
@@ -155,7 +155,7 @@ export const RoleDashboard = ({ userRole }: RoleDashboardProps) => {
                   <div className="text-2xl font-bold text-foreground">{item.value}</div>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  {loading ? <Skeleton className="h-3 w-24 mt-1" /> : "from your data"}
+                  {loading ? <Skeleton className="h-3 w-24 mt-1" /> : t('dashboard.from_your_data')}
                 </p>
               </CardContent>
             </Card>
@@ -167,7 +167,7 @@ export const RoleDashboard = ({ userRole }: RoleDashboardProps) => {
         {/* Recent Activity - from database */}
         <Card className="tricolor-card">
           <CardHeader>
-            <CardTitle className="text-gradient-tricolor">{t('dashboard.recent_activity') || "Recent Activity"}</CardTitle>
+            <CardTitle className="text-gradient-tricolor">{t('dashboard.recent_activity')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
@@ -198,7 +198,7 @@ export const RoleDashboard = ({ userRole }: RoleDashboardProps) => {
             ) : (
               <div className="text-center py-6 text-muted-foreground">
                 <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">{t('dashboard.no_activity') || "No activity yet. Start using the app!"}</p>
+                <p className="text-sm">{t('dashboard.no_activity')}</p>
               </div>
             )}
           </CardContent>
@@ -207,7 +207,7 @@ export const RoleDashboard = ({ userRole }: RoleDashboardProps) => {
         {/* Quick Actions */}
         <Card className="tricolor-card">
           <CardHeader>
-            <CardTitle className="text-gradient-tricolor">{t('dashboard.quick_actions') || "Quick Actions"}</CardTitle>
+            <CardTitle className="text-gradient-tricolor">{t('dashboard.quick_actions')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {quickActions.map((action, index) => (

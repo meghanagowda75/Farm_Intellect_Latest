@@ -74,7 +74,7 @@ export const Header = ({ user, onMenuClick, notificationCount = 0 }: HeaderProps
                 const isDark = html.classList.toggle("dark");
                 localStorage.setItem("theme", isDark ? "dark" : "light");
               }}
-              aria-label="Toggle dark mode"
+              aria-label={t("header.toggle_theme")}
             >
               <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -82,10 +82,10 @@ export const Header = ({ user, onMenuClick, notificationCount = 0 }: HeaderProps
 
             <div className="hidden md:flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
               {!isOnline ? <WifiOff className="h-3.5 w-3.5 text-destructive" /> : <RefreshCw className="h-3.5 w-3.5 text-primary" />}
-              <span>{isOnline ? "Sync ready" : "Offline mode"}</span>
+              <span>{isOnline ? t("header.sync_ready") : t("header.offline_mode")}</span>
               {queuedCount > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
-                  {queuedCount} queued
+                  {queuedCount} {t("header.queued")}
                 </Badge>
               )}
             </div>
@@ -108,7 +108,7 @@ export const Header = ({ user, onMenuClick, notificationCount = 0 }: HeaderProps
                     <User className="h-5 w-5" />
                     <span className="hidden sm:inline">{user.name}</span>
                     <Badge variant="secondary" className="hidden sm:inline bg-primary/10 text-primary border-primary/20">
-                      {user.role}
+                      {t(`header.role_${user.role.toLowerCase()}`)}
                     </Badge>
                   </Button>
                 </DropdownMenuTrigger>
