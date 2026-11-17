@@ -7,7 +7,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 export const InstallPrompt = () => {
   const { isOnline, canInstall, isInstalled, installApp } = usePwaStatus();
-  const { language } = useLanguage();
+  const { t } = useLanguage();
   const [dismissed, setDismissed] = useState(false);
   const [showOffline, setShowOffline] = useState(false);
 
@@ -73,10 +73,10 @@ export const InstallPrompt = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-semibold text-foreground text-sm">
-                    Install Farm Intellect
+                    {t('pwa.install_title')}
                   </h4>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Access your farm data offline, get push alerts & works like a native app
+                    {t('pwa.install_description')}
                   </p>
                   <div className="flex gap-2 mt-3">
                     <Button
@@ -85,7 +85,7 @@ export const InstallPrompt = () => {
                       className="bg-accent text-accent-foreground hover:bg-accent/90 glow-saffron text-xs gap-1.5"
                     >
                       <Download className="h-3.5 w-3.5" />
-                      Install App
+                      {t('pwa.install_button')}
                     </Button>
                     <Button
                       size="sm"
@@ -93,7 +93,7 @@ export const InstallPrompt = () => {
                       onClick={() => setDismissed(true)}
                       className="text-xs text-muted-foreground"
                     >
-                      Not now
+                      {t('pwa.not_now')}
                     </Button>
                   </div>
                 </div>

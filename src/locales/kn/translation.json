@@ -289,11 +289,11 @@
   "auth.invalid_phone": "Invalid phone number",
   "auth.enter_otp": "Enter OTP",
   "auth.otp_sent": "OTP sent",
-  "dashboard.quick_actions": "Quick Actions",
-  "dashboard.recent_activity": "Recent Activity",
-  "dashboard.no_activity": "No recent activity",
+  "dashboard.quick_actions": "ತ್ವರಿತ ಕಾರ್ಯಗಳು",
+  "dashboard.recent_activity": "ಇತ್ತೀಚಿನ ಚಟುವಟಿಕೆಗಳು",
+  "dashboard.no_activity": "ಇತ್ತೀಚಿನ ಚಟುವಟಿಕೆಗಳಿಲ್ಲ",
   "dashboard.scheme_matches": "Scheme matches",
-  "dashboard.field_events": "Field events",
+  "dashboard.field_events": "ಹೊಲದ ಘಟನೆಗಳು",
   "landing.get_started": "Get Started",
   "landing.proudly_indian_badge": "🇮🇳 Proudly Indian — Next-Generation Farm Management",
   "landing.sms_banner.title": "No smartphone? Start free SMS and upgrade to paid plans.",
@@ -431,5 +431,10 @@
   "dashboard.scheme_wizard": "ಯೋಜನೆ ಮಾರ್ಗದರ್ಶಿ",
   "dashboard.scheme_wizard_desc": "ಸಬ್ಸಿಡಿ ಮತ್ತು ಸಾಲಕ್ಕೆ ಹೊಂದುವ ಯೋಜನೆಗಳನ್ನು ಹುಡುಕಿ",
   "dashboard.ask_expert": "ತಜ್ಞರನ್ನು ಕೇಳಿ",
-  "dashboard.ask_expert_desc": "ತಜ್ಞರ ಮಾರ್ಗದರ್ಶನ ಪಡೆಯಿರಿ"
+  "dashboard.ask_expert_desc": "ತಜ್ಞರ ಮಾರ್ಗದರ್ಶನ ಪಡೆಯಿರಿ",
+  "dashboard.logged_in_successfully": "ಯಶಸ್ವಿಯಾಗಿ ಲಾಗಿನ್ ಆಗಿದ್ದೀರಿ",
+  "pwa.install_title": "Farm Intellect ಸ್ಥಾಪಿಸಿ",
+  "pwa.install_description": "ನಿಮ್ಮ ಕೃಷಿ ಡೇಟಾವನ್ನು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿ ಬಳಸಿ, ಪುಶ್ ಎಚ್ಚರಿಕೆಗಳನ್ನು ಪಡೆಯಿರಿ ಮತ್ತು ಸ್ಥಳೀಯ ಆ್ಯಪ್‌ನಂತೆ ಬಳಸಿ",
+  "pwa.install_button": "ಆ್ಯಪ್ ಸ್ಥಾಪಿಸಿ",
+  "pwa.not_now": "ಈಗ ಬೇಡ"
 }

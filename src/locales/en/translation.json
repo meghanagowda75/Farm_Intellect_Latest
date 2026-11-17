@@ -431,5 +431,10 @@
   "dashboard.scheme_wizard": "Scheme Wizard",
   "dashboard.scheme_wizard_desc": "Match subsidies & credit",
   "dashboard.ask_expert": "Ask an Expert",
-  "dashboard.ask_expert_desc": "Get professional guidance"
+  "dashboard.ask_expert_desc": "Get professional guidance",
+  "dashboard.logged_in_successfully": "Logged in successfully",
+  "pwa.install_title": "Install Farm Intellect",
+  "pwa.install_description": "Access your farm data offline, get push alerts and use it like a native app",
+  "pwa.install_button": "Install App",
+  "pwa.not_now": "Not now"
 }
