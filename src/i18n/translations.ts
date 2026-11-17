@@ -322,7 +322,6 @@ const en: Record<string, string> = {
   'landing.join_description': 'Our platform has helped farmers increase yields by up to 35% while reducing costs and environmental impact.',
   'landing.get_started_today': 'Get Started Today',
   'landing.footer_tagline': 'Empowering farmers with intelligent technology for sustainable agriculture 🇮🇳',
-  'landing.footer_copyright': '© 2025 Samrudh. All Rights Reserved.',
   'landing.demo_title': 'Bhoomi Aasha - Demo',
   'landing.demo_subtitle': 'Listen to our audio demonstration',
   'landing.stats.active_farmers': 'Active Farmers',
