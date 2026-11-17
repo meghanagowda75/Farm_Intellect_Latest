@@ -490,27 +490,6 @@ export const EnhancedAnalytics = () => {
         </p>
       </div>
 
-      <Card className="border-border">
-        <CardContent className="flex items-start gap-3 p-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
-
-          <div>
-            <p className="font-medium text-foreground">
-              Browser demo mode
-            </p>
-
-            <p className="mt-1 text-sm text-muted-foreground">
-              User totals combine saved mock accounts from
-              the Admin Users page and registered browser
-              accounts. These are not live platform-wide
-              database totals. Activity, crop calendar, and
-              task statistics are unavailable without a
-              connected backend database.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Browser Demo Users"
