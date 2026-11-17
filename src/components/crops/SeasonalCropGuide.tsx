@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import type { CropInfo } from "@/data/cropsData";
 import { cropsData } from "@/data/cropsData";
 import {
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 
 export const SeasonalCropGuide = () => {
+  const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSeason, setSelectedSeason] = useState("all");
   const [selectedRegion, setSelectedRegion] = useState("all");
@@ -105,7 +107,7 @@ export const SeasonalCropGuide = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Leaf className="h-5 w-5 text-primary" />
-            Seasonal Crop Guide
+            {t("crop_guide.title")}
           </CardTitle>
         </CardHeader>
 
@@ -114,7 +116,7 @@ export const SeasonalCropGuide = () => {
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search crops..."
+                placeholder={t("crop_guide.search")}
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 className="pl-10"
@@ -126,14 +128,14 @@ export const SeasonalCropGuide = () => {
               onValueChange={setSelectedSeason}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Season" />
+                <SelectValue placeholder={t("crop_guide.season")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Seasons</SelectItem>
-                <SelectItem value="rabi">Rabi (Winter)</SelectItem>
-                <SelectItem value="kharif">Kharif (Monsoon)</SelectItem>
-                <SelectItem value="summer">Summer</SelectItem>
-                <SelectItem value="perennial">Perennial</SelectItem>
+                <SelectItem value="all">{t("crop_guide.all_seasons")}</SelectItem>
+                <SelectItem value="rabi">{t("crop_guide.rabi")}</SelectItem>
+                <SelectItem value="kharif">{t("crop_guide.kharif")}</SelectItem>
+                <SelectItem value="summer">{t("crop_guide.summer")}</SelectItem>
+                <SelectItem value="perennial">{t("crop_guide.perennial")}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -142,10 +144,10 @@ export const SeasonalCropGuide = () => {
               onValueChange={setSelectedRegion}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Region" />
+                <SelectValue placeholder={t("crop_guide.region")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Regions</SelectItem>
+                <SelectItem value="all">{t("crop_guide.all_regions")}</SelectItem>
                 <SelectItem value="Punjab">Punjab</SelectItem>
                 <SelectItem value="Haryana">Haryana</SelectItem>
                 <SelectItem value="UP">Uttar Pradesh</SelectItem>
@@ -162,13 +164,13 @@ export const SeasonalCropGuide = () => {
               onValueChange={setSelectedDifficulty}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Difficulty" />
+                <SelectValue placeholder={t("crop_guide.difficulty")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Levels</SelectItem>
-                <SelectItem value="Easy">Easy</SelectItem>
-                <SelectItem value="Medium">Medium</SelectItem>
-                <SelectItem value="Hard">Hard</SelectItem>
+                <SelectItem value="all">{t("crop_guide.all_levels")}</SelectItem>
+                <SelectItem value="Easy">{t("crop_guide.easy")}</SelectItem>
+                <SelectItem value="Medium">{t("crop_guide.medium")}</SelectItem>
+                <SelectItem value="Hard">{t("crop_guide.hard")}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -181,7 +183,7 @@ export const SeasonalCropGuide = () => {
                 setSelectedDifficulty("all");
               }}
             >
-              Clear Filters
+              {t("crop_guide.clear_filters")}
             </Button>
           </div>
         </CardContent>
@@ -205,14 +207,14 @@ export const SeasonalCropGuide = () => {
                   crop.difficulty
                 )}`}
               >
-                {crop.difficulty}
+                {t(`crop_guide.${crop.difficulty.toLowerCase()}`)}
               </Badge>
 
               <Badge
                 variant="outline"
                 className="absolute right-3 top-3 bg-background"
               >
-                {crop.season}
+                {t(`crop_guide.${crop.season}`)}
               </Badge>
             </div>
 
@@ -244,7 +246,7 @@ export const SeasonalCropGuide = () => {
                       crop.waterRequirement
                     )}`}
                   />
-                  <span>{crop.waterRequirement} Water</span>
+                  <span>{t(`crop_guide.${crop.waterRequirement.toLowerCase()}`)} {t("crop_guide.water")}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -260,14 +262,14 @@ export const SeasonalCropGuide = () => {
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Planting:</span>
+                  <span className="text-muted-foreground">{t("crop_guide.planting")}:</span>
                   <span className="text-right font-medium">
                     {crop.plantingTime}
                   </span>
                 </div>
 
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Harvest:</span>
+                  <span className="text-muted-foreground">{t("crop_guide.harvest")}:</span>
                   <span className="text-right font-medium">
                     {crop.harvestTime}
                   </span>
@@ -283,7 +285,7 @@ export const SeasonalCropGuide = () => {
 
                 {crop.region.length > 3 && (
                   <Badge variant="outline" className="text-xs">
-                    +{crop.region.length - 3} more
+                    +{crop.region.length - 3} {t("crop_guide.more")}
                   </Badge>
                 )}
               </div>
@@ -298,7 +300,7 @@ export const SeasonalCropGuide = () => {
                 size="sm"
                 onClick={() => setSelectedCrop(crop)}
               >
-                View Details
+                {t("crop_guide.view_details")}
               </Button>
             </CardContent>
           </Card>
@@ -309,9 +311,9 @@ export const SeasonalCropGuide = () => {
         <Card>
           <CardContent className="py-12 text-center">
             <Leaf className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="mb-2 text-lg font-medium">No crops found</h3>
+            <h3 className="mb-2 text-lg font-medium">{t("crop_guide.no_crops")}</h3>
             <p className="text-muted-foreground">
-              Try adjusting your search criteria or filters.
+              {t("crop_guide.adjust_filters")}
             </p>
           </CardContent>
         </Card>
@@ -346,7 +348,7 @@ export const SeasonalCropGuide = () => {
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Close crop details"
+                aria-label={t("crop_guide.close_details")}
                 onClick={() => setSelectedCrop(null)}
               >
                 <X className="h-5 w-5" />
@@ -362,41 +364,41 @@ export const SeasonalCropGuide = () => {
             <div className="mb-5 flex flex-wrap gap-2">
               <Badge>{selectedCrop.season}</Badge>
               <Badge variant="outline">
-                {selectedCrop.difficulty} difficulty
+                {t(`crop_guide.${selectedCrop.difficulty.toLowerCase()}`)} {t("crop_guide.difficulty_label")}
               </Badge>
               <Badge variant="outline">
-                {selectedCrop.profitability} profitability
+                {t(`crop_guide.${selectedCrop.profitability.toLowerCase()}`)} {t("crop_guide.profitability")}
               </Badge>
             </div>
 
             <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-              <Detail label="Planting time" value={selectedCrop.plantingTime} />
-              <Detail label="Harvest time" value={selectedCrop.harvestTime} />
-              <Detail label="Growing duration" value={selectedCrop.duration} />
-              <Detail label="Average yield" value={selectedCrop.avgYield} />
-              <Detail label="Market price" value={selectedCrop.marketPrice} />
+              <Detail label={t("crop_guide.planting_time")} value={selectedCrop.plantingTime} />
+              <Detail label={t("crop_guide.harvest_time")} value={selectedCrop.harvestTime} />
+              <Detail label={t("crop_guide.growing_duration")} value={selectedCrop.duration} />
+              <Detail label={t("crop_guide.average_yield")} value={selectedCrop.avgYield} />
+              <Detail label={t("crop_guide.market_price")} value={selectedCrop.marketPrice} />
               <Detail
-                label="Water requirement"
+                label={t("crop_guide.water_requirement")}
                 value={selectedCrop.waterRequirement}
               />
-              <Detail label="Climate" value={selectedCrop.climate} />
-              <Detail label="Soil type" value={selectedCrop.soilType} />
+              <Detail label={t("crop_guide.climate")} value={selectedCrop.climate} />
+              <Detail label={t("crop_guide.soil_type")} value={selectedCrop.soilType} />
               <Detail
-                label="Suitable regions"
+                label={t("crop_guide.suitable_regions")}
                 value={selectedCrop.region.join(", ")}
               />
               <Detail
-                label="Fertilizers"
+                label={t("crop_guide.fertilizers")}
                 value={selectedCrop.fertilizers.join(", ")}
               />
               <Detail
-                label="Common diseases"
+                label={t("crop_guide.common_diseases")}
                 value={selectedCrop.diseases.join(", ")}
               />
             </div>
 
             <div className="mt-5 rounded-lg bg-muted/50 p-4">
-              <h3 className="mb-2 font-semibold">About this crop</h3>
+              <h3 className="mb-2 font-semibold">{t("crop_guide.about_crop")}</h3>
               <p className="text-sm leading-relaxed text-muted-foreground">
                 {selectedCrop.description}
               </p>
@@ -404,7 +406,7 @@ export const SeasonalCropGuide = () => {
 
             <div className="mt-6 flex justify-end">
               <Button type="button" onClick={() => setSelectedCrop(null)}>
-                Close
+                {t("common.close")}
               </Button>
             </div>
           </section>

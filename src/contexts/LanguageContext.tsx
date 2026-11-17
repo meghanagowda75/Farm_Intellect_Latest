@@ -95,19 +95,46 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   }, [language]);
 
   const t = (key: string): string => {
-    const localeBundle = i18n.getResourceBundle(language, "translation") as Record<string, unknown> | undefined;
+    const englishFallback = translations.en[key];
+    const dictionaryTranslation = translations[language]?.[key];
+
+    if (
+      dictionaryTranslation &&
+      dictionaryTranslation !== englishFallback
+    ) {
+      return dictionaryTranslation;
+    }
+
+    const localeBundle = i18n.getResourceBundle(
+      language,
+      "translation",
+    ) as Record<string, unknown> | undefined;
+
     const localeTranslation = localeBundle?.[key];
 
-    if (typeof localeTranslation === "string" && localeTranslation) {
+    if (
+      typeof localeTranslation === "string" &&
+      localeTranslation &&
+      localeTranslation !== englishFallback
+    ) {
       return localeTranslation;
     }
 
-    const i18nTranslation = i18n.getResource(language, "translation", key);
-    if (typeof i18nTranslation === "string" && i18nTranslation) {
+    const i18nTranslation = i18n.getResource(
+      language,
+      "translation",
+      key,
+    );
+
+    if (
+      typeof i18nTranslation === "string" &&
+      i18nTranslation &&
+      i18nTranslation !== englishFallback
+    ) {
       return i18nTranslation;
     }
 
-    return translations[language]?.[key] || translations.en[key] || key;
+    return dictionaryTranslation || englishFallback || key;
   };
 
   useEffect(() => {

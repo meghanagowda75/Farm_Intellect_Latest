@@ -146,12 +146,12 @@ const Crops = () => {
       !form.plantedDate ||
       !form.expectedHarvest
     ) {
-      setFormError("Please fill in all fields.");
+      setFormError(t("crops.error_required"));
       return;
     }
 
     if (form.expectedHarvest < form.plantedDate) {
-      setFormError("Expected harvest must be on or after the planting date.");
+      setFormError(t("crops.error_harvest_date"));
       return;
     }
 
@@ -289,7 +289,7 @@ const Crops = () => {
                           </CardTitle>
                         </div>
                         <Badge variant={getStatusBadge(crop.status) as any}>
-                          {crop.stage}
+                          {t(`crops.stage.${crop.stage.toLowerCase().replace(/ /g, "_")}`)}
                         </Badge>
                       </div>
                       <CardDescription>{crop.variety}</CardDescription>
@@ -365,8 +365,8 @@ const Crops = () => {
                           variant="outline"
                           size="sm"
                           className="hover:bg-primary/10"
-                          aria-label={`Water ${crop.name}`}
-                          title={`Water ${crop.name}`}
+                          aria-label={`${t("crops.water")} ${crop.name}`}
+                          title={`${t("crops.water")} ${crop.name}`}
                           onClick={() => setSelectedCrop(crop)}
                         >
                           <Droplets className="h-4 w-4" />
@@ -377,8 +377,8 @@ const Crops = () => {
                           variant="outline"
                           size="sm"
                           className="hover:bg-destructive/10"
-                          aria-label={`View alerts for ${crop.name}`}
-                          title={`View alerts for ${crop.name}`}
+                          aria-label={`${t("crops.view_alerts")} ${crop.name}`}
+                          title={`${t("crops.view_alerts")} ${crop.name}`}
                           onClick={() => setSelectedCrop(crop)}
                         >
                           <AlertTriangle className="h-4 w-4" />
@@ -404,7 +404,7 @@ const Crops = () => {
                     onClick={() => setAddCropOpen(true)}
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Add New Crop
+                    {t("crops.add_new")}
                   </Button>
                 </div>
               )}
@@ -433,13 +433,13 @@ const Crops = () => {
                     id="crop-details-title"
                     className="text-xl font-bold text-foreground"
                   >
-                    {selectedCrop.name} Details
+                    {selectedCrop.name} {t("crops.details")}
                   </h2>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label="Close crop details"
+                    aria-label={t("common.close")}
                     onClick={() => setSelectedCrop(null)}
                   >
                     <X className="h-5 w-5" />
@@ -448,34 +448,34 @@ const Crops = () => {
 
                 <div className="space-y-3 break-words text-sm">
                   <p>
-                    <strong>Variety:</strong> {selectedCrop.variety}
+                    <strong>{t("crops.variety")}:</strong> {selectedCrop.variety}
                   </p>
                   <p>
-                    <strong>Field:</strong> {selectedCrop.field}
+                    <strong>{t("crops.field")}:</strong> {selectedCrop.field}
                   </p>
                   <p>
-                    <strong>Area:</strong> {selectedCrop.area}
+                    <strong>{t("crops.area")}:</strong> {selectedCrop.area}
                   </p>
                   <p>
-                    <strong>Planted Date:</strong>{" "}
+                    <strong>{t("crops.planted_date")}:</strong>{" "}
                     {new Date(
                       `${selectedCrop.plantedDate}T00:00:00`,
                     ).toLocaleDateString()}
                   </p>
                   <p>
-                    <strong>Expected Harvest:</strong>{" "}
+                    <strong>{t("crops.expected_harvest")}:</strong>{" "}
                     {new Date(
                       `${selectedCrop.expectedHarvest}T00:00:00`,
                     ).toLocaleDateString()}
                   </p>
                   <p>
-                    <strong>Growth Stage:</strong> {selectedCrop.stage}
+                    <strong>{t("crops.growth_stage")}:</strong> {t(`crops.stage.${selectedCrop.stage.toLowerCase().replace(/ /g, "_")}`)}
                   </p>
                   <p>
-                    <strong>Health Score:</strong> {selectedCrop.health}%
+                    <strong>{t("crops.health_score")}:</strong> {selectedCrop.health}%
                   </p>
                   <p>
-                    <strong>Status:</strong> {selectedCrop.status}
+                    <strong>{t("crops.status")}:</strong> {t(`crops.${selectedCrop.status.toLowerCase()}`)}
                   </p>
                 </div>
 
@@ -484,7 +484,7 @@ const Crops = () => {
                     type="button"
                     onClick={() => setSelectedCrop(null)}
                   >
-                    Close
+                    {t("common.close")}
                   </Button>
                 </div>
               </div>
@@ -510,10 +510,10 @@ const Crops = () => {
                       id="add-crop-title"
                       className="text-xl font-bold text-foreground sm:text-2xl"
                     >
-                      Add New Crop
+                      {t("crops.add_new")}
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Enter your crop and field details.
+                      {t("crops.form_description")}
                     </p>
                   </div>
 
@@ -521,7 +521,7 @@ const Crops = () => {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label="Close add crop form"
+                    aria-label={t("common.close")}
                     onClick={closeAddForm}
                   >
                     <X className="h-5 w-5" />
@@ -535,7 +535,7 @@ const Crops = () => {
                         htmlFor="crop-name"
                         className="text-sm font-medium text-foreground"
                       >
-                        Crop Name *
+                        {t("crops.crop_name")} *
                       </label>
                       <Input
                         id="crop-name"
@@ -543,7 +543,7 @@ const Crops = () => {
                         onChange={(event) =>
                           updateForm("name", event.target.value)
                         }
-                        placeholder="e.g. Rice"
+                        placeholder={t("crops.example_rice")}
                         required
                         autoFocus
                       />
@@ -554,7 +554,7 @@ const Crops = () => {
                         htmlFor="crop-variety"
                         className="text-sm font-medium text-foreground"
                       >
-                        Variety *
+                        {t("crops.variety")} *
                       </label>
                       <Input
                         id="crop-variety"
@@ -562,7 +562,7 @@ const Crops = () => {
                         onChange={(event) =>
                           updateForm("variety", event.target.value)
                         }
-                        placeholder="e.g. Basmati"
+                        placeholder={t("crops.example_basmati")}
                         required
                       />
                     </div>
@@ -572,7 +572,7 @@ const Crops = () => {
                         htmlFor="crop-field"
                         className="text-sm font-medium text-foreground"
                       >
-                        Field Name *
+                        {t("crops.field_name")} *
                       </label>
                       <Input
                         id="crop-field"
@@ -580,7 +580,7 @@ const Crops = () => {
                         onChange={(event) =>
                           updateForm("field", event.target.value)
                         }
-                        placeholder="e.g. Field D"
+                        placeholder={t("crops.example_field")}
                         required
                       />
                     </div>
@@ -590,7 +590,7 @@ const Crops = () => {
                         htmlFor="crop-area"
                         className="text-sm font-medium text-foreground"
                       >
-                        Area (hectares) *
+                        {t("crops.area_hectares")} *
                       </label>
                       <Input
                         id="crop-area"
@@ -601,7 +601,7 @@ const Crops = () => {
                         onChange={(event) =>
                           updateForm("area", event.target.value)
                         }
-                        placeholder="e.g. 2.5"
+                        placeholder={t("crops.example_area")}
                         required
                       />
                     </div>
@@ -611,7 +611,7 @@ const Crops = () => {
                         htmlFor="crop-planted-date"
                         className="text-sm font-medium text-foreground"
                       >
-                        Planting Date *
+                        {t("crops.planting_date")} *
                       </label>
                       <Input
                         id="crop-planted-date"
@@ -629,7 +629,7 @@ const Crops = () => {
                         htmlFor="crop-harvest-date"
                         className="text-sm font-medium text-foreground"
                       >
-                        Expected Harvest *
+                        {t("crops.expected_harvest")} *
                       </label>
                       <Input
                         id="crop-harvest-date"
@@ -648,28 +648,28 @@ const Crops = () => {
                         htmlFor="crop-stage"
                         className="text-sm font-medium text-foreground"
                       >
-                        Growth Stage
+                        {t("crops.growth_stage")}
                       </label>
                       <Select
                         value={form.stage}
                         onValueChange={(value) => updateForm("stage", value)}
                       >
                         <SelectTrigger id="crop-stage" className="w-full">
-                          <SelectValue placeholder="Select growth stage" />
+                          <SelectValue placeholder={t("crops.select_growth_stage")} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Germination">
-                            Germination
+                            {t("crops.stage.germination")}
                           </SelectItem>
-                          <SelectItem value="Seedling">Seedling</SelectItem>
+                          <SelectItem value="Seedling">{t("crops.stage.seedling")}</SelectItem>
                           <SelectItem value="Vegetative">
-                            Vegetative
+                            {t("crops.stage.vegetative")}
                           </SelectItem>
-                          <SelectItem value="Flowering">Flowering</SelectItem>
-                          <SelectItem value="Fruiting">Fruiting</SelectItem>
-                          <SelectItem value="Maturity">Maturity</SelectItem>
+                          <SelectItem value="Flowering">{t("crops.stage.flowering")}</SelectItem>
+                          <SelectItem value="Fruiting">{t("crops.stage.fruiting")}</SelectItem>
+                          <SelectItem value="Maturity">{t("crops.stage.maturity")}</SelectItem>
                           <SelectItem value="Harvest Ready">
-                            Harvest Ready
+                            {t("crops.stage.harvest_ready")}
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -691,11 +691,11 @@ const Crops = () => {
                       variant="outline"
                       onClick={closeAddForm}
                     >
-                      Cancel
+                      {t("common.cancel")}
                     </Button>
                     <Button type="submit" className="w-full sm:w-auto">
                       <Plus className="mr-2 h-4 w-4" />
-                      Add Crop
+                      {t("crops.add_new")}
                     </Button>
                   </div>
                 </form>
