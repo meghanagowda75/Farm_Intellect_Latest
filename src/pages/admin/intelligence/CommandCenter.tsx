@@ -33,12 +33,12 @@ const CommandCenter = () => {
         <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]" />
       </div>
 
-      <div className="relative z-10 container mx-auto px-6 pt-24 pb-12 h-screen flex flex-col justify-center">
+      <div className="relative z-10 container mx-auto w-full px-4 sm:px-6 pt-10 sm:pt-16 lg:pt-24 pb-12 min-h-screen flex flex-col justify-start lg:justify-center">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1 }}
-          className="text-center mb-16"
+          className="text-center mb-10 sm:mb-12 lg:mb-16"
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm font-medium text-emerald-400 mb-6 backdrop-blur-md">
             <span className="relative flex h-2 w-2">
@@ -47,10 +47,10 @@ const CommandCenter = () => {
             </span>
             LIVE: BHARAT NETWORK
           </div>
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60 drop-shadow-2xl">
+          <h1 className="text-3xl sm:text-5xl md:text-7xl font-extrabold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60 drop-shadow-2xl">
             🇮🇳 INDIA AGRICULTURAL STATUS
           </h1>
-          <p className="text-xl text-zinc-400 max-w-2xl mx-auto font-light">
+          <p className="text-base sm:text-xl text-zinc-400 max-w-2xl mx-auto font-light px-2">
             Real-time telemetry and intelligence from the Farm Intellect Network.
           </p>
         </motion.div>
@@ -59,13 +59,13 @@ const CommandCenter = () => {
           variants={containerVariants}
           initial="hidden"
           animate="visible"
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto w-full"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 max-w-6xl mx-auto w-full"
         >
           {stats.map((stat, idx) => (
             <motion.div 
               key={idx}
               variants={itemVariants}
-              className="group relative overflow-hidden rounded-2xl bg-white/5 border border-white/10 p-8 backdrop-blur-xl hover:bg-white/10 transition-colors duration-500"
+              className="group relative min-w-0 overflow-hidden rounded-2xl bg-white/5 border border-white/10 p-5 sm:p-8 backdrop-blur-xl hover:bg-white/10 transition-colors duration-500"
             >
               <div className="absolute top-0 right-0 p-6 opacity-20 group-hover:opacity-40 transition-opacity duration-500">
                 <stat.icon className={`w-24 h-24 ${stat.color} filter blur-xl`} />
@@ -81,7 +81,7 @@ const CommandCenter = () => {
                 </p>
                 
                 <div className="flex items-baseline gap-1">
-                  <h3 className="text-5xl lg:text-6xl font-bold tracking-tighter text-white">
+                  <h3 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tighter text-white">
                     {stat.prefix}
                     <AnimatedNumber end={stat.value} duration={2.5} decimals={stat.decimals || 0} separator="," />
                   </h3>
@@ -97,15 +97,15 @@ const CommandCenter = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 2, duration: 1 }}
-          className="mt-16 flex justify-center gap-4"
+          className="mt-10 sm:mt-16 flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4"
         >
-          <Link to="/admin/intelligence-center/mission-2030" className="px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium transition-all backdrop-blur-md flex items-center gap-2 text-sm">
+          <Link to="/admin/intelligence-center/mission-2030" className="w-full sm:w-auto justify-center px-5 sm:px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium transition-all backdrop-blur-md flex items-center gap-2 text-sm">
             Launch Mission 2030 <ChevronRight className="w-4 h-4" />
           </Link>
-          <Link to="/admin/intelligence-center/war-room" className="px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium transition-all backdrop-blur-md flex items-center gap-2 text-sm">
+          <Link to="/admin/intelligence-center/war-room" className="w-full sm:w-auto justify-center px-5 sm:px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium transition-all backdrop-blur-md flex items-center gap-2 text-sm">
             Enter War Room <ChevronRight className="w-4 h-4" />
           </Link>
-          <Link to="/admin/intelligence-center/future-headlines" className="px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium transition-all backdrop-blur-md flex items-center gap-2 text-sm">
+          <Link to="/admin/intelligence-center/future-headlines" className="w-full sm:w-auto justify-center px-5 sm:px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium transition-all backdrop-blur-md flex items-center gap-2 text-sm">
             View Future Impact <ChevronRight className="w-4 h-4" />
           </Link>
         </motion.div>
