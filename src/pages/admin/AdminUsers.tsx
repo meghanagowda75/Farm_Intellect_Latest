@@ -694,7 +694,7 @@ const AdminUsers = () => {
               </CardTitle>
 
               <CardDescription>
-                Change a user's role using the selector.
+                View and manage platform users and roles.
               </CardDescription>
             </CardHeader>
 
@@ -768,32 +768,6 @@ const AdminUsers = () => {
                             </span>
                           </Badge>
 
-                          <Select
-                            value={item.role}
-                            onValueChange={(role) =>
-                              void handleRoleChange(item.user_id, role)
-                            }
-                            disabled={changingRole === item.user_id}
-                          >
-                            <SelectTrigger className="w-[130px] h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-
-                            <SelectContent>
-                              <SelectItem value="farmer">
-                                🌾 Farmer
-                              </SelectItem>
-                              <SelectItem value="merchant">
-                                🏢 Merchant
-                              </SelectItem>
-                              <SelectItem value="expert">
-                                🎓 Expert
-                              </SelectItem>
-                              <SelectItem value="admin">
-                                🛡️ Admin
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
                         </div>
                       </div>
                     );
