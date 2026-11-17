@@ -62,7 +62,7 @@ export const Header = ({ user, onMenuClick, notificationCount = 0 }: HeaderProps
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:block">
+            <div className="block w-[120px] sm:w-auto">
               <LanguageSelector />
             </div>
 

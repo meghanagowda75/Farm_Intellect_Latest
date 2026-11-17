@@ -13,7 +13,7 @@ export const LanguageSelector = () => {
 
   return (
     <Select value={language} onValueChange={(value: Language) => { void setLanguage(value); }}>
-      <SelectTrigger className="w-[200px]">
+      <SelectTrigger className="w-full min-w-0 sm:w-[200px]">
         <div className="flex items-center gap-2">
           <Languages className="h-4 w-4" />
           <SelectValue placeholder={t('common.select_language')} />
