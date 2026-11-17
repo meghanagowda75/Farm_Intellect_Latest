@@ -95,24 +95,20 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   }, [language]);
 
   const t = (key: string): string => {
-  const localeTranslation = i18n.getResource(
-    language,
-    "translation",
-    key
-  );
+    const localeBundle = i18n.getResourceBundle(language, "translation") as Record<string, unknown> | undefined;
+    const localeTranslation = localeBundle?.[key];
 
-  if (typeof localeTranslation === "string" && localeTranslation) {
-    return localeTranslation;
-  }
+    if (typeof localeTranslation === "string" && localeTranslation) {
+      return localeTranslation;
+    }
 
-  const translation = translations[language]?.[key];
+    const i18nTranslation = i18n.getResource(language, "translation", key);
+    if (typeof i18nTranslation === "string" && i18nTranslation) {
+      return i18nTranslation;
+    }
 
-  if (translation) {
-    return translation;
-  }
-
-  return translations.en[key] || key;
-};
+    return translations[language]?.[key] || translations.en[key] || key;
+  };
 
   useEffect(() => {
     const bootstrap = async () => {

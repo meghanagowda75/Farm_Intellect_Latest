@@ -62,6 +62,7 @@ export const initI18n = async () => {
     .init({
       lng: DEFAULT_LANGUAGE,
       fallbackLng: DEFAULT_LANGUAGE,
+      keySeparator: false,
       resources: {
         [DEFAULT_LANGUAGE]: {
           translation,
