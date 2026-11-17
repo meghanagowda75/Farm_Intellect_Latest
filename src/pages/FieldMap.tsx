@@ -463,9 +463,9 @@ const FieldMap = () => {
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <Card className="flex h-[600px] flex-col overflow-hidden">
+          <div className="grid min-w-0 gap-6 lg:grid-cols-3">
+            <div className="min-w-0 lg:col-span-2">
+              <Card className="flex h-[520px] min-w-0 flex-col overflow-hidden sm:h-[600px]">
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2">
                     <Map className="h-5 w-5 text-primary" />
@@ -473,7 +473,7 @@ const FieldMap = () => {
                   </CardTitle>
                 </CardHeader>
 
-                <CardContent className="relative min-h-0 flex-1 p-0">
+                <CardContent className="relative min-h-0 w-full min-w-0 flex-1 p-0">
                   {loading ? (
                     <div className="flex h-full min-h-[480px] items-center justify-center text-sm text-muted-foreground">
                       Loading fields...
